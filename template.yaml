@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for ENI Flowlogs Step Function
+
+Resources:
+  NGWFlowlogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: NGW-Flowlogs
+      AttributeDefinitions:
+        - AttributeName: ngw-id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ngw-id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  ActivateVPCFlowLogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'ActivateVPCFlowLog'
+      Handler: activate_vpc_flow_log.lambda_handler
+      Runtime: python3.12
+      Architectures:
+      - arm64
+      CodeUri: ./src-activate
+      Policies:
+        - AWSLambdaExecute
+        - DynamoDBCrudPolicy:
+            TableName: ENI-Flowlogs
+        - CloudWatchLogsFullAccess
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ec2:CreateFlowLogs
+                - ec2:DescribeFlowLogs
+                - ec2:DeleteFlowLogs
+                - ec2:DescribeNatGateways
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: !GetAtt VPCFlowLogRole.Arn
+      Environment:
+        Variables:
+          LOG_GROUP_NAME: tomerr-VPC-FlowLogs
+          VPC_FLOW_LOG_ROLE: !GetAtt VPCFlowLogRole.Arn
+
+  DeleteVPCFlowLogFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'DeleteVPCFlowLog'
+      Handler: delete_vpc_flow_log.lambda_handler
+      Runtime: python3.12
+      Architectures:
+      - arm64      
+      CodeUri: ./src-delete
+      Policies:
+        - AWSLambdaExecute
+        - DynamoDBCrudPolicy:
+            TableName: ENI-Flowlogs
+        - CloudWatchLogsFullAccess
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ec2:CreateFlowLogs
+                - ec2:DescribeFlowLogs
+                - ec2:DeleteFlowLogs
+              Resource: '*'
+
+  StepFunction:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: "enable-vpc-fl-for-spikes"
+      Definition: 
+        Comment: ENI Flowlogs Step Function
+        StartAt: Check-NGW-ID
+        States:
+          Check-NGW-ID:
+            Type: Task
+            Resource: "arn:aws:states:::dynamodb:getItem"
+            InputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+            Parameters:
+              TableName: NGW-Flowlogs
+              Key:
+                ngw-id.$: "$"
+            ResultPath: $.taskresult
+            Next: NGW-ID-Exists?
+          NGW-ID-Exists?:
+            Type: Choice
+            Choices:
+              - Variable: $.taskresult.Item.ngw-id.S
+                IsPresent: true
+                Next: VPCflAlreadyRecorded
+            Default: Extract-NGW-ID
+          Extract-NGW-ID:
+            Type: Pass
+            Next: AddNGW-ID
+            OutputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+          VPCflAlreadyRecorded:
+            Type: Pass
+            Parameters:
+              Message: Flow Log was already recorded for NatGateway
+              ngw-id.$: "$.taskresult.Item.ngw-id.S"
+            End: true
+          AddNGW-ID:
+            Type: Task
+            Resource: "arn:aws:states:::dynamodb:putItem"
+            Parameters:
+              TableName: NGW-Flowlogs
+              Item:
+                ngw-id:
+                  S.$: "$"
+            ResultPath: null
+            Next: ActivateVPCFlowLog
+          ActivateVPCFlowLog:
+            Type: Task
+            Resource: !GetAtt ActivateVPCFlowLogFunction.Arn
+            Parameters:
+              ngw-id.$: "$"
+            Next: Wait15Minutes
+          Wait15Minutes:
+            Type: Wait
+            Seconds: 900
+            Next: DeleteVPCFlowLog
+          DeleteVPCFlowLog:
+            Type: Task
+            Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
+            Parameters:
+              FlowLogIds.$: "$.body.FlowLogIds"
+            Next: LogDeletion
+          LogDeletion:
+            Type: Pass
+            End: true
+      Role: !GetAtt StepFunctionExecutionRole.Arn
+
+  StepFunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - lambda:InvokeFunction
+                Resource: '*'
+
+  CloudWatchEventRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: 'EventBridge rule for CloudWatch Alarm State Change'
+      EventPattern:
+        detail-type:
+          - 'CloudWatch Alarm State Change'
+        source:
+          - 'aws.cloudwatch'
+        detail:
+          state:
+            value:
+              - 'ALARM'
+          configuration:
+            metrics:
+              metricStat:
+                metric:
+                  namespace:
+                    - 'AWS/NATGateway'
+                  name:
+                    - 'BytesInFromDestination'
+      State: 'ENABLED'
+      Targets:
+        - Arn: !Ref StepFunction
+          Id: StepFunctionTarget
+          RoleArn: !GetAtt CloudWatchEventRole.Arn
+
+  CloudWatchEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowInvokeStepFunction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'states:StartExecution'
+                Resource: !Ref StepFunction
+
+  VPCFlowLogRole:
+      Type: 'AWS::IAM::Role'
+      Properties: 
+        AssumeRolePolicyDocument: 
+          Version: '2012-10-17'
+          Statement: 
+            - Effect: 'Allow'
+              Principal: 
+                Service: 'vpc-flow-logs.amazonaws.com'
+              Action: 'sts:AssumeRole'
+        Policies: 
+          - PolicyName: 'VPCFlowLogPolicy'
+            PolicyDocument: 
+              Version: '2012-10-17'
+              Statement: 
+                - Effect: 'Allow'
+                  Action: 
+                    - 'logs:CreateLogGroup'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'                 
+                    - 'logs:DescribeLogGroups'
+                    - 'logs:DescribeLogStreams'
+                  Resource: '*'
+
+Outputs:
+  ActivateVPCFlowLogFunction:
+    Description: 'Activate VPC Flow Log Lambda Function Console Link'
+    Value: !Sub 'https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${ActivateVPCFlowLogFunction}'
+
+  DeleteVPCFlowLogFunction:
+    Description: 'Delete VPC Flow Log Lambda Function Console Link'
+    Value: !Sub 'https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${DeleteVPCFlowLogFunction}'
+
+  StepFunction:
+    Description: 'ENI Flowlogs Step Function Console Link'
+    Value: !Sub 'https://console.aws.amazon.com/states/home?region=${AWS::Region}#/statemachines/view/${StepFunction}'
+
+  NGWFlowlogsTable:
+    Description: 'NGW Flowlogs DynamoDB Table Console Link'
+    Value: !Sub 'https://console.aws.amazon.com/dynamodb/home?region=${AWS::Region}#tables:selected=${NGWFlowlogsTable}'
