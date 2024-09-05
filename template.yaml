@@ -1,12 +1,22 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: SAM template for ENI Flowlogs Step Function
+Description: SAM template automatic VPC Flow Log recording
 
 Resources:
   NGWFlowlogsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: NGW-Flowlogs
+      TableName: !Sub
+        - NGW-Flowlogs-${Suffix}
+        - Suffix: !Select 
+          - 4
+          - !Split 
+              - "-"
+              - !Select 
+                  - 2
+                  - !Split 
+                      - "/"
+                      - !Ref "AWS::StackId"        
       AttributeDefinitions:
         - AttributeName: ngw-id
           AttributeType: S
@@ -14,11 +24,38 @@ Resources:
         - AttributeName: ngw-id
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+  
+  VPCFlowLogsCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub
+        - "Auto-VPC-FlowLogs-${Suffix}"
+        - Suffix: !Select 
+          - 4
+          - !Split 
+              - "-"
+              - !Select 
+                  - 2
+                  - !Split 
+                      - "/"
+                      - !Ref "AWS::StackId"
+      RetentionInDays: 7
+      LogGroupClass: INFREQUENT_ACCESS
 
   ActivateVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: 'ActivateVPCFlowLog'
+      FunctionName: !Sub
+        - 'ActivateVPCFlowLog-${Suffix}'
+        - Suffix: !Select 
+          - 4
+          - !Split 
+              - "-"
+              - !Select 
+                  - 2
+                  - !Split 
+                      - "/"
+                      - !Ref "AWS::StackId"
       Handler: activate_vpc_flow_log.lambda_handler
       Runtime: python3.12
       Architectures:
@@ -44,13 +81,23 @@ Resources:
               Resource: !GetAtt VPCFlowLogRole.Arn
       Environment:
         Variables:
-          LOG_GROUP_NAME: tomerr-VPC-FlowLogs
+          LOG_GROUP_NAME: !Ref VPCFlowLogsCloudWatchLogGroup
           VPC_FLOW_LOG_ROLE: !GetAtt VPCFlowLogRole.Arn
 
   DeleteVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: 'DeleteVPCFlowLog'
+      FunctionName: !Sub
+        - 'DeleteVPCFlowLog-${Suffix}'
+        - Suffix: !Select 
+          - 4
+          - !Split 
+              - "-"
+              - !Select 
+                  - 2
+                  - !Split 
+                      - "/"
+                      - !Ref "AWS::StackId"
       Handler: delete_vpc_flow_log.lambda_handler
       Runtime: python3.12
       Architectures:
@@ -73,9 +120,19 @@ Resources:
   StepFunction:
     Type: AWS::Serverless::StateMachine
     Properties:
-      Name: "enable-vpc-fl-for-spikes"
+      Name: !Sub 
+        - "enable-vpc-fl-for-spikes-${Suffix}"
+        - Suffix: !Select
+          - 4
+          - !Split 
+              - "-"
+              - !Select 
+                  - 2
+                  - !Split 
+                      - "/"
+                      - !Ref "AWS::StackId"      
       Definition: 
-        Comment: ENI Flowlogs Step Function
+        Comment: State Machine to record Nat Gateway spikes in a VPC Flow Log
         StartAt: Check-NGW-ID
         States:
           Check-NGW-ID:
@@ -109,7 +166,7 @@ Resources:
             Type: Task
             Resource: "arn:aws:states:::dynamodb:putItem"
             Parameters:
-              TableName: NGW-Flowlogs
+              TableName: !Ref NGWFlowlogsTable
               Item:
                 ngw-id:
                   S.$: "$"
