@@ -15,3 +15,27 @@ If no such entry is found:
 
 
 This removes the need to leave the VPC Flow log running all the time, and instead it will be created only when there is a traffic spike.
+
+
+The CloudWatch Alarm that can be set to fire when the Nat Gateway passes over a desired threshold can be defined like so:
+```yaml
+Type: AWS::CloudWatch::Alarm
+Properties:
+    AlarmName: NATGateway-spike
+    ActionsEnabled: true
+    OKActions: []
+    AlarmActions: []
+    InsufficientDataActions: []
+    MetricName: BytesInFromDestination
+    Namespace: AWS/NATGateway
+    Statistic: Sum
+    Dimensions:
+        - Name: NatGatewayId
+          Value: nat-0fb9d5ee549ddb49b
+    Period: 60
+    EvaluationPeriods: 3
+    DatapointsToAlarm: 1
+    Threshold: 1000000
+    ComparisonOperator: GreaterThanThreshold
+    TreatMissingData: missing
+```
