@@ -2,21 +2,38 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: SAM template automatic VPC Flow Log recording
 
+Parameters:
+  VPCFlowLogRetentionTimeDays:
+    Description: The time in days to retain the log group
+    Type: Number
+    Default: 7
+    AllowedValues: [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
+    ConstraintDescription: Must be one of the allowed values
+      [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
+
+  LambdaLogGroupRetentionTimeDays:
+    Description: The time in days to retain the Lambda log group
+    Type: Number
+    Default: 7
+    AllowedValues: [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
+    ConstraintDescription: Must be one of the allowed values
+      [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
+
 Resources:
   NGWFlowlogsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub
         - NGW-Flowlogs-${Suffix}
-        - Suffix: !Select 
-          - 4
-          - !Split 
-              - "-"
-              - !Select 
-                  - 2
-                  - !Split 
-                      - "/"
-                      - !Ref "AWS::StackId"        
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
       AttributeDefinitions:
         - AttributeName: ngw-id
           AttributeType: S
@@ -24,47 +41,45 @@ Resources:
         - AttributeName: ngw-id
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
-  
+
   VPCFlowLogsCloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub
-        - "Auto-VPC-FlowLogs-${Suffix}"
-        - Suffix: !Select 
-          - 4
-          - !Split 
-              - "-"
-              - !Select 
-                  - 2
-                  - !Split 
-                      - "/"
-                      - !Ref "AWS::StackId"
-      RetentionInDays: 7
+        - Auto-VPC-FlowLogs-${Suffix}
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
+      RetentionInDays: !Ref VPCFlowLogRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
   ActivateVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub
-        - 'ActivateVPCFlowLog-${Suffix}'
-        - Suffix: !Select 
-          - 4
-          - !Split 
-              - "-"
-              - !Select 
-                  - 2
-                  - !Split 
-                      - "/"
-                      - !Ref "AWS::StackId"
+        - ActivateVPCFlowLog-${Suffix}
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
       Handler: activate_vpc_flow_log.lambda_handler
       Runtime: python3.12
       Architectures:
-      - arm64
+        - arm64
       CodeUri: ./src-activate
       Policies:
         - AWSLambdaExecute
-        - DynamoDBCrudPolicy:
-            TableName: ENI-Flowlogs
         - CloudWatchLogsFullAccess
         - Version: '2012-10-17'
           Statement:
@@ -84,29 +99,34 @@ Resources:
           LOG_GROUP_NAME: !Ref VPCFlowLogsCloudWatchLogGroup
           VPC_FLOW_LOG_ROLE: !GetAtt VPCFlowLogRole.Arn
 
+  ActivateVPCFlowLogFunctionCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ActivateVPCFlowLogFunction}
+      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
+      LogGroupClass: INFREQUENT_ACCESS
+
   DeleteVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub
-        - 'DeleteVPCFlowLog-${Suffix}'
-        - Suffix: !Select 
-          - 4
-          - !Split 
-              - "-"
-              - !Select 
-                  - 2
-                  - !Split 
-                      - "/"
-                      - !Ref "AWS::StackId"
+        - DeleteVPCFlowLog-${Suffix}
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
       Handler: delete_vpc_flow_log.lambda_handler
       Runtime: python3.12
       Architectures:
-      - arm64      
+        - arm64
       CodeUri: ./src-delete
       Policies:
         - AWSLambdaExecute
-        - DynamoDBCrudPolicy:
-            TableName: ENI-Flowlogs
         - CloudWatchLogsFullAccess
         - Version: '2012-10-17'
           Statement:
@@ -117,32 +137,39 @@ Resources:
                 - ec2:DeleteFlowLogs
               Resource: '*'
 
+  DeleteVPCFlowLogFunctionCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DeleteVPCFlowLogFunction}
+      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
+      LogGroupClass: INFREQUENT_ACCESS
+
   StepFunction:
     Type: AWS::Serverless::StateMachine
     Properties:
-      Name: !Sub 
-        - "enable-vpc-fl-for-spikes-${Suffix}"
+      Name: !Sub
+        - enable-vpc-fl-for-spikes-${Suffix}
         - Suffix: !Select
-          - 4
-          - !Split 
-              - "-"
-              - !Select 
-                  - 2
-                  - !Split 
-                      - "/"
-                      - !Ref "AWS::StackId"      
-      Definition: 
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
+      Definition:
         Comment: State Machine to record Nat Gateway spikes in a VPC Flow Log
         StartAt: Check-NGW-ID
         States:
           Check-NGW-ID:
             Type: Task
-            Resource: "arn:aws:states:::dynamodb:getItem"
-            InputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+            Resource: arn:aws:states:::dynamodb:getItem
+            InputPath: $.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId
             Parameters:
-              TableName: NGW-Flowlogs
+              TableName: !Ref NGWFlowlogsTable
               Key:
-                ngw-id.$: "$"
+                ngw-id.$: $
             ResultPath: $.taskresult
             Next: NGW-ID-Exists?
           NGW-ID-Exists?:
@@ -155,28 +182,28 @@ Resources:
           Extract-NGW-ID:
             Type: Pass
             Next: AddNGW-ID
-            OutputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+            OutputPath: $.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId
           VPCflAlreadyRecorded:
             Type: Pass
             Parameters:
               Message: Flow Log was already recorded for NatGateway
-              ngw-id.$: "$.taskresult.Item.ngw-id.S"
+              ngw-id.$: $.taskresult.Item.ngw-id.S
             End: true
           AddNGW-ID:
             Type: Task
-            Resource: "arn:aws:states:::dynamodb:putItem"
+            Resource: arn:aws:states:::dynamodb:putItem
             Parameters:
               TableName: !Ref NGWFlowlogsTable
               Item:
                 ngw-id:
-                  S.$: "$"
+                  S.$: $
             ResultPath: null
             Next: ActivateVPCFlowLog
           ActivateVPCFlowLog:
             Type: Task
             Resource: !GetAtt ActivateVPCFlowLogFunction.Arn
             Parameters:
-              ngw-id.$: "$"
+              ngw-id.$: $
             Next: Wait15Minutes
           Wait15Minutes:
             Type: Wait
@@ -186,7 +213,7 @@ Resources:
             Type: Task
             Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
             Parameters:
-              FlowLogIds.$: "$.body.FlowLogIds"
+              FlowLogIds.$: $.body.FlowLogIds
             Next: LogDeletion
           LogDeletion:
             Type: Pass
@@ -216,27 +243,27 @@ Resources:
                 Resource: '*'
 
   CloudWatchEventRule:
-    Type: 'AWS::Events::Rule'
+    Type: AWS::Events::Rule
     Properties:
-      Description: 'EventBridge rule for CloudWatch Alarm State Change'
+      Description: EventBridge rule for CloudWatch Alarm State Change
       EventPattern:
         detail-type:
-          - 'CloudWatch Alarm State Change'
+          - CloudWatch Alarm State Change
         source:
-          - 'aws.cloudwatch'
+          - aws.cloudwatch
         detail:
           state:
             value:
-              - 'ALARM'
+              - ALARM
           configuration:
             metrics:
               metricStat:
                 metric:
                   namespace:
-                    - 'AWS/NATGateway'
+                    - AWS/NATGateway
                   name:
-                    - 'BytesInFromDestination'
-      State: 'ENABLED'
+                    - BytesInFromDestination
+      State: ENABLED
       Targets:
         - Arn: !Ref StepFunction
           Id: StepFunctionTarget
@@ -258,46 +285,46 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: 'states:StartExecution'
+                Action: states:StartExecution
                 Resource: !Ref StepFunction
 
   VPCFlowLogRole:
-      Type: 'AWS::IAM::Role'
-      Properties: 
-        AssumeRolePolicyDocument: 
-          Version: '2012-10-17'
-          Statement: 
-            - Effect: 'Allow'
-              Principal: 
-                Service: 'vpc-flow-logs.amazonaws.com'
-              Action: 'sts:AssumeRole'
-        Policies: 
-          - PolicyName: 'VPCFlowLogPolicy'
-            PolicyDocument: 
-              Version: '2012-10-17'
-              Statement: 
-                - Effect: 'Allow'
-                  Action: 
-                    - 'logs:CreateLogGroup'
-                    - 'logs:CreateLogStream'
-                    - 'logs:PutLogEvents'                 
-                    - 'logs:DescribeLogGroups'
-                    - 'logs:DescribeLogStreams'
-                  Resource: '*'
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: VPCFlowLogPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: '*'
 
 Outputs:
   ActivateVPCFlowLogFunction:
-    Description: 'Activate VPC Flow Log Lambda Function Console Link'
-    Value: !Sub 'https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${ActivateVPCFlowLogFunction}'
+    Description: Activate VPC Flow Log Lambda Function Console Link
+    Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${ActivateVPCFlowLogFunction}
 
   DeleteVPCFlowLogFunction:
-    Description: 'Delete VPC Flow Log Lambda Function Console Link'
-    Value: !Sub 'https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${DeleteVPCFlowLogFunction}'
+    Description: Delete VPC Flow Log Lambda Function Console Link
+    Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${DeleteVPCFlowLogFunction}
 
   StepFunction:
-    Description: 'ENI Flowlogs Step Function Console Link'
-    Value: !Sub 'https://console.aws.amazon.com/states/home?region=${AWS::Region}#/statemachines/view/${StepFunction}'
+    Description: ENI Flowlogs Step Function Console Link
+    Value: !Sub https://console.aws.amazon.com/states/home?region=${AWS::Region}#/statemachines/view/${StepFunction}
 
   NGWFlowlogsTable:
-    Description: 'NGW Flowlogs DynamoDB Table Console Link'
-    Value: !Sub 'https://console.aws.amazon.com/dynamodb/home?region=${AWS::Region}#tables:selected=${NGWFlowlogsTable}'
+    Description: NGW Flowlogs DynamoDB Table Console Link
+    Value: !Sub https://console.aws.amazon.com/dynamodb/home?region=${AWS::Region}#tables:selected=${NGWFlowlogsTable}
