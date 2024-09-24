@@ -35,7 +35,7 @@ def lambda_handler(event, context):
     
     return {
         'statusCode': 200,
-        'body': { 'FlowLogIds' : flow_log_ids }
+        'body': { 'FlowLogIds' : flow_log_ids, 'ENIs' : enis }
     } 
 
 

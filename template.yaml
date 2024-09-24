@@ -19,6 +19,10 @@ Parameters:
     ConstraintDescription: Must be one of the allowed values
       [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
 
+  EmailAddress:
+    Type: String
+    Description: The email address to subscribe to the SNS Topic
+
 Resources:
   NGWFlowlogsTable:
     Type: AWS::DynamoDB::Table
@@ -35,10 +39,10 @@ Resources:
                   - /
                   - !Ref AWS::StackId
       AttributeDefinitions:
-        - AttributeName: ngw-id
+        - AttributeName: ngwid
           AttributeType: S
       KeySchema:
-        - AttributeName: ngw-id
+        - AttributeName: ngwid
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
@@ -169,13 +173,13 @@ Resources:
             Parameters:
               TableName: !Ref NGWFlowlogsTable
               Key:
-                ngw-id.$: $
+                ngwid.$: $
             ResultPath: $.taskresult
             Next: NGW-ID-Exists?
           NGW-ID-Exists?:
             Type: Choice
             Choices:
-              - Variable: $.taskresult.Item.ngw-id.S
+              - Variable: $.taskresult.Item.ngwid.S
                 IsPresent: true
                 Next: VPCflAlreadyRecorded
             Default: Extract-NGW-ID
@@ -187,7 +191,7 @@ Resources:
             Type: Pass
             Parameters:
               Message: Flow Log was already recorded for NatGateway
-              ngw-id.$: $.taskresult.Item.ngw-id.S
+              ngwid.$: $.taskresult.Item.ngwid.S
             End: true
           AddNGW-ID:
             Type: Task
@@ -195,7 +199,7 @@ Resources:
             Parameters:
               TableName: !Ref NGWFlowlogsTable
               Item:
-                ngw-id:
+                ngwid:
                   S.$: $
             ResultPath: null
             Next: ActivateVPCFlowLog
@@ -203,7 +207,7 @@ Resources:
             Type: Task
             Resource: !GetAtt ActivateVPCFlowLogFunction.Arn
             Parameters:
-              ngw-id.$: $
+              ngwid.$: $
             Next: Wait15Minutes
           Wait15Minutes:
             Type: Wait
@@ -214,9 +218,14 @@ Resources:
             Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
             Parameters:
               FlowLogIds.$: $.body.FlowLogIds
-            Next: LogDeletion
-          LogDeletion:
-            Type: Pass
+            Next: NotifySNS
+          NotifySNS:
+            Type: Task
+            Resource: arn:aws:states:::sns:publish
+            Parameters:
+              TopicArn: !Ref NatGatewayFlowLogsTopic
+              Message.$: !Sub States.Format('The VPC Flow Logs has been recorded for Nat Gateway {}\nCloudWatch Logs Group {}\nStream Suffix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${VPCFlowLogsCloudWatchLogGroup}', $.ENIs)
+              Subject: "Nat Gateway VPC Flow Log Recorded"
             End: true
       Role: !GetAtt StepFunctionExecutionRole.Arn
 
@@ -241,6 +250,10 @@ Resources:
                   - dynamodb:PutItem
                   - lambda:InvokeFunction
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - sns:publish
+                Resource: !Ref NatGatewayFlowLogsTopic
 
   CloudWatchEventRule:
     Type: AWS::Events::Rule
@@ -312,6 +325,18 @@ Resources:
                   - logs:DescribeLogStreams
                 Resource: '*'
 
+  NatGatewayFlowLogsTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      TopicName: 'NATGatewayFlowLogsRecorded'
+
+  EmailSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties: 
+      Protocol: 'email'
+      Endpoint: !Ref EmailAddress
+      TopicArn: !Ref NatGatewayFlowLogsTopic
+
 Outputs:
   ActivateVPCFlowLogFunction:
     Description: Activate VPC Flow Log Lambda Function Console Link
@@ -328,3 +353,13 @@ Outputs:
   NGWFlowlogsTable:
     Description: NGW Flowlogs DynamoDB Table Console Link
     Value: !Sub https://console.aws.amazon.com/dynamodb/home?region=${AWS::Region}#tables:selected=${NGWFlowlogsTable}
+
+  NatGatewayFlowLogsTopicArn:
+    Description: 'SNS Topic in the AWS Management Console'
+    Value: !Sub 'https://console.aws.amazon.com/sns/v3/home?region=${AWS::Region}#/topic/${NatGatewayFlowLogsTopic}'
+
+  VPCFlowLogsCloudWatchLogGroupLink:
+    Description: "VPC Flow Logs CloudWatch Group"
+    Value: !Sub
+      - "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logStream:group=${LogGroupName}"
+      - LogGroupName: !Ref VPCFlowLogsCloudWatchLogGroup
