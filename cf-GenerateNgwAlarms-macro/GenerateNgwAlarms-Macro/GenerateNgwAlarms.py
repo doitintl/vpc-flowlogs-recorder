@@ -30,7 +30,6 @@ def lambda_handler(event, context):
     
     fragment = event['fragment']
     Resources = fragment['Resources']
-    NGWCloudWatchAlarms = Resources['NGWCloudWatchAlarms']
     params = event['templateParameterValues']
 
     # Extract the parameters
