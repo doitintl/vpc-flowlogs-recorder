@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template to deploy the GenerateNgwAlarms macro
+
+Parameters:
+  LambdaLogGroupRetentionTimeDays:
+    Description: The time in days to retain the Lambda log group
+    Type: Number
+    Default: 7
+    AllowedValues: [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
+    ConstraintDescription: Must be one of the allowed values
+      [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
+      
+Resources:
+  GenerateNgwAlarmsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GenerateNgwAlarms
+      Handler: GenerateNgwAlarms.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      CodeUri: ./GenerateNgwAlarms-Macro
+      Timeout: 10
+      Policies:
+        - AWSLambdaExecute
+        - CloudWatchLogsFullAccess
+
+  GenerateArrayOfNatGatewayIDs:
+    Type: AWS::CloudFormation::Macro
+    Properties:
+      Name: GenerateNgwAlarms
+      FunctionName: !Ref GenerateNgwAlarmsFunction
+      Description: "Macro to generate an array of CloudWatch NatGateway Alarms"
+
+  GenerateArrayOfNatGatewayIDsFunctionCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GenerateNgwAlarmsFunction}
+      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
+      LogGroupClass: INFREQUENT_ACCESS
