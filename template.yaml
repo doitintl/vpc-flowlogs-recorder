@@ -200,7 +200,7 @@ Resources:
             Next: "Wait15Minutes"
             Parameters:
               ngwid.$: "$.ngwid"
-            Resource: "arn:aws:lambda:us-east-1:992382399522:function:ActivateVPCFlowLog-0ee81731ed79"
+            Resource: !GetAtt ActivateVPCFlowLogFunction.Arn
             ResultPath: "$.taskresult"
             Type: "Task"
           AddNGW-ID:
@@ -209,7 +209,7 @@ Resources:
               Item:
                 ngwid:
                   S.$: "$.ngwid"
-              TableName: "NGW-Flowlogs-0ee81731ed79"
+              TableName: !Ref NGWFlowlogsTable
             Resource: "arn:aws:states:::dynamodb:putItem"
             ResultPath: null
             Type: "Task"
@@ -219,7 +219,7 @@ Resources:
             Parameters:
               Key:
                 ngwid.$: "$"
-              TableName: "NGW-Flowlogs-0ee81731ed79"
+              TableName: !Ref NGWFlowlogsTable
             Resource: "arn:aws:states:::dynamodb:getItem"
             ResultPath: "$.taskresult"
             Type: "Task"
@@ -227,7 +227,7 @@ Resources:
             Next: "NotifySNS"
             Parameters:
               FlowLogIds.$: "$.taskresult.body.FlowLogIds"
-            Resource: "arn:aws:lambda:us-east-1:992382399522:function:DeleteVPCFlowLog-0ee81731ed79"
+            Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
             Type: "Task"
             ResultPath: null
           Extract-NGW-ID:
@@ -245,9 +245,9 @@ Resources:
           NotifySNS:
             End: true
             Parameters:
-              Message.$: "States.Format('The VPC Flow Logs has been recorded for Nat Gateway {}\nCloudWatch Logs Group {}\nStream Prefix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/Auto-VPC-FlowLogs-0ee81731ed79', $.taskresult.body.ENIs)"
+              Message.$: !Sub States.Format('The VPC Flow Logs has been recorded for Nat Gateway {}\nCloudWatch Logs Group {}\nStream Prefix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${VPCFlowLogsCloudWatchLogGroup}', $.taskresult.body.ENIs)                         
               Subject: "Nat Gateway VPC Flow Log Recorded"
-              TopicArn: "arn:aws:sns:us-east-1:992382399522:NATGatewayFlowLogsRecorded"
+              TopicArn: !Ref NatGatewayFlowLogsTopic
             Resource: "arn:aws:states:::sns:publish"
             Type: "Task"
           VPCflAlreadyRecorded:
