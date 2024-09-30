@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform:
+  - GenerateNgwAlarms
+  - AWS::Serverless-2016-10-31
 Description: SAM template automatic VPC Flow Log recording
 
 Parameters:
@@ -22,8 +24,39 @@ Parameters:
   EmailAddress:
     Type: String
     Description: The email address to subscribe to the SNS Topic
+  
+  NatGatewayIDs:
+    Type: String
+    Description: A comma separated list of the IDs of the NAT Gateways to alarm on
+
+  SamplingPeriod:
+    Type: Number
+    Default: 60
+    MinValue: 10
+    Description: The sampling period in seconds
+
+  EvaluationPeriods:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    Description: The number of evaluation periods
+
+  Threshold:
+    Type: Number
+    Default: 1000000
+    MinValue: 1000
+    Description: The threshold for the alarm
+  
+  DatapointsToAlarm:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    Description: The number of datapoints that must be breaching the threshold to trigger the alarm
 
 Resources:
+  NGWCloudWatchAlarms:
+    Type: "Custom::GenerateMultipleAlarams"
+
   NGWFlowlogsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -163,70 +196,73 @@ Resources:
                   - /
                   - !Ref AWS::StackId
       Definition:
-        Comment: State Machine to record Nat Gateway spikes in a VPC Flow Log
-        StartAt: Check-NGW-ID
+        Comment: "State Machine to record Nat Gateway spikes in a VPC Flow Log"
+        StartAt: "Check-NGW-ID"
         States:
-          Check-NGW-ID:
-            Type: Task
-            Resource: arn:aws:states:::dynamodb:getItem
-            InputPath: $.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId
+          ActivateVPCFlowLog:
+            Next: "Wait15Minutes"
             Parameters:
-              TableName: !Ref NGWFlowlogsTable
-              Key:
-                ngwid.$: $
-            ResultPath: $.taskresult
-            Next: NGW-ID-Exists?
-          NGW-ID-Exists?:
-            Type: Choice
-            Choices:
-              - Variable: $.taskresult.Item.ngwid.S
-                IsPresent: true
-                Next: VPCflAlreadyRecorded
-            Default: Extract-NGW-ID
-          Extract-NGW-ID:
-            Type: Pass
-            Next: AddNGW-ID
-            OutputPath: $.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId
-          VPCflAlreadyRecorded:
-            Type: Pass
-            Parameters:
-              Message: Flow Log was already recorded for NatGateway
-              ngwid.$: $.taskresult.Item.ngwid.S
-            End: true
+              ngwid.$: "$.ngwid"
+            Resource: "arn:aws:lambda:us-east-1:992382399522:function:ActivateVPCFlowLog-0ee81731ed79"
+            ResultPath: "$.taskresult"
+            Type: "Task"
           AddNGW-ID:
-            Type: Task
-            Resource: arn:aws:states:::dynamodb:putItem
+            Next: "ActivateVPCFlowLog"
             Parameters:
-              TableName: !Ref NGWFlowlogsTable
               Item:
                 ngwid:
-                  S.$: $
+                  S.$: "$.ngwid"
+              TableName: "NGW-Flowlogs-0ee81731ed79"
+            Resource: "arn:aws:states:::dynamodb:putItem"
             ResultPath: null
-            Next: ActivateVPCFlowLog
-          ActivateVPCFlowLog:
-            Type: Task
-            Resource: !GetAtt ActivateVPCFlowLogFunction.Arn
+            Type: "Task"
+          Check-NGW-ID:
+            InputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+            Next: "NGW-ID-Exists?"
             Parameters:
-              ngwid.$: $
-            Next: Wait15Minutes
-          Wait15Minutes:
-            Type: Wait
-            Seconds: 900
-            Next: DeleteVPCFlowLog
+              Key:
+                ngwid.$: "$"
+              TableName: "NGW-Flowlogs-0ee81731ed79"
+            Resource: "arn:aws:states:::dynamodb:getItem"
+            ResultPath: "$.taskresult"
+            Type: "Task"
           DeleteVPCFlowLog:
-            Type: Task
-            Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
+            Next: "NotifySNS"
             Parameters:
-              FlowLogIds.$: $.body.FlowLogIds
-            Next: NotifySNS
+              FlowLogIds.$: "$.taskresult.body.FlowLogIds"
+            Resource: "arn:aws:lambda:us-east-1:992382399522:function:DeleteVPCFlowLog-0ee81731ed79"
+            Type: "Task"
+            ResultPath: null
+          Extract-NGW-ID:
+            Next: "AddNGW-ID"
+            Type: "Pass"
+            Parameters:
+              ngwid.$: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+          NGW-ID-Exists?:
+            Choices:
+              - IsPresent: true
+                Next: "VPCflAlreadyRecorded"
+                Variable: "$.taskresult.Item.ngwid.S"
+            Default: "Extract-NGW-ID"
+            Type: "Choice"
           NotifySNS:
-            Type: Task
-            Resource: arn:aws:states:::sns:publish
-            Parameters:
-              TopicArn: !Ref NatGatewayFlowLogsTopic
-              Message.$: !Sub States.Format('The VPC Flow Logs has been recorded for Nat Gateway {}\nCloudWatch Logs Group {}\nStream Suffix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${VPCFlowLogsCloudWatchLogGroup}', $.ENIs)
-              Subject: "Nat Gateway VPC Flow Log Recorded"
             End: true
+            Parameters:
+              Message.$: "States.Format('The VPC Flow Logs has been recorded for Nat Gateway {}\nCloudWatch Logs Group {}\nStream Prefix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/Auto-VPC-FlowLogs-0ee81731ed79', $.taskresult.body.ENIs)"
+              Subject: "Nat Gateway VPC Flow Log Recorded"
+              TopicArn: "arn:aws:sns:us-east-1:992382399522:NATGatewayFlowLogsRecorded"
+            Resource: "arn:aws:states:::sns:publish"
+            Type: "Task"
+          VPCflAlreadyRecorded:
+            End: true
+            Parameters:
+              Message: "Flow Log was already recorded for NatGateway"
+              ngwid.$: "$.taskresult.Item.ngwid.S"
+            Type: "Pass"
+          Wait15Minutes:
+            Next: "DeleteVPCFlowLog"
+            Seconds: 60
+            Type: "Wait"
       Role: !GetAtt StepFunctionExecutionRole.Arn
 
   StepFunctionExecutionRole:
@@ -363,3 +399,9 @@ Outputs:
     Value: !Sub
       - "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logStream:group=${LogGroupName}"
       - LogGroupName: !Ref VPCFlowLogsCloudWatchLogGroup
+
+  # NATGatewayAlarmLink:
+  #   Description: "Link to the NAT Gateway CloudWatch Alarm"
+  #   Value: !Sub
+  #     - "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#alarmsV2:alarm/${AlarmName}"
+  #     - AlarmName: !Ref NATGatewayAlarm

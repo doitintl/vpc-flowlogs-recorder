@@ -12,12 +12,12 @@ def lambda_handler(event, context):
     
     # Get Nat Gateway ID
 #    nat_gateway_id = event['alarmData']['configuration']['metrics'][0]['metricStat']['metric']['dimensions']['NatGatewayId']
-    nat_gateway_id = event['ngw-id']
+    nat_gateway_id = event['ngwid']
     
     enis, vpc_id = get_eni_from_natgateway(nat_gateway_id)
 
     flow_log_ids = []
-    log_format = '${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}'
+    log_format = '${action} ${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}'
     
     for eni in enis:
         try:
