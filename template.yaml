@@ -54,9 +54,6 @@ Parameters:
     Description: The number of datapoints that must be breaching the threshold to trigger the alarm
 
 Resources:
-  NGWCloudWatchAlarms:
-    Type: "Custom::GenerateMultipleAlarams"
-
   NGWFlowlogsTable:
     Type: AWS::DynamoDB::Table
     Properties:
