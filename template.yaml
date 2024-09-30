@@ -258,7 +258,7 @@ Resources:
             Type: "Pass"
           Wait15Minutes:
             Next: "DeleteVPCFlowLog"
-            Seconds: 60
+            Seconds: 900
             Type: "Wait"
       Role: !GetAtt StepFunctionExecutionRole.Arn
 
