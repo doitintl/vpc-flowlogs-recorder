@@ -92,6 +92,7 @@ Resources:
                   - !Ref AWS::StackId
       RetentionInDays: !Ref VPCFlowLogRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
+    DeletionPolicy: Retain
 
   ActivateVPCFlowLogFunction:
     Type: AWS::Serverless::Function
