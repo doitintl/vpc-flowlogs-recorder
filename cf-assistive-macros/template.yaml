@@ -1,12 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: SAM template to deploy the GenerateNgwAlarms macro
+Description: SAM template to deploy Assistive Macros for the VPC Flow Log Recorders
 
 Parameters:
   LambdaLogGroupRetentionTimeDays:
     Description: The time in days to retain the Lambda log group
     Type: Number
-    Default: 7
+    Default: 5
     AllowedValues: [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
     ConstraintDescription: Must be one of the allowed values
       [1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1827,3653]
@@ -37,5 +37,33 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/${GenerateNgwAlarmsFunction}
+      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
+      LogGroupClass: INFREQUENT_ACCESS
+
+  StringToIntFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: StringToInt-F39F5A878973
+      Handler: StringToInt.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      CodeUri: ./StringToInt-Macro
+      Timeout: 10
+      Policies:
+        - AWSLambdaExecute
+        - CloudWatchLogsFullAccess
+
+  StringToIntMacro:
+    Type: AWS::CloudFormation::Macro
+    Properties:
+      Name: StringToInt-F39F5A878973
+      FunctionName: !Ref StringToIntFunction
+      Description: "Macro to convert a String to an Integer"
+
+  StringToIntFunctionCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StringToIntFunction}
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS

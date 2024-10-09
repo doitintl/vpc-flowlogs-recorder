@@ -52,6 +52,18 @@ Parameters:
     Default: 1
     MinValue: 1
     Description: The number of datapoints that must be breaching the threshold to trigger the alarm
+  
+  RecordingTime:
+    Type: Number
+    Default: 900
+    MinValue: 0
+    Description: Number of seconds to record traffic. 0 means to record until the CloudWatch Alarm returns to OK.
+
+  NumOfRecordings:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    Description: How many recordings to perform. 0 = whenever there is an Alarm. Above 0 will record only the specified number of Alarms.
 
 Resources:
   NGWFlowlogsTable:
@@ -236,11 +248,17 @@ Resources:
                   - !Ref AWS::StackId
       Definition:
         Comment: "State Machine to record Nat Gateway spikes in a VPC Flow Log"
-        StartAt: "Check-NGW-ID"
+        StartAt: "Add Number of Recordings To State Machine"
         States:
+          "Add Number of Recordings To State Machine":
+            Type: "Pass"
+            Next: "Check-NGW-ID"
+            Result: 
+              NumOfRecordings: !Ref NumOfRecordings
+            ResultPath: $
           Check-NGW-ID:
             InputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
-            Next: "NGW-ID-Exists?"
+            Next: "ShouldWeRecord?"
             Parameters:
               Key:
                 ngwid.$: "$"
@@ -248,7 +266,7 @@ Resources:
             Resource: "arn:aws:states:::dynamodb:getItem"
             ResultPath: "$.taskresult"
             Type: "Task"
-          NGW-ID-Exists?:
+          ShouldWeRecord?:
             Choices:
               - IsPresent: true
                 Next: "VPCflAlreadyRecorded"
@@ -275,7 +293,11 @@ Resources:
           WaitForAlarmOrTimeout:
             Type: Task
             Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
-            HeartbeatSeconds: 60
+            HeartbeatSeconds:
+              Fn::Transform:
+                Name: "StringToInt-F39F5A878973"
+                Parameters:
+                  Value: !Ref RecordingTime
             Parameters:
               FunctionName: !GetAtt StoreWaitTokenFunction.Arn
               Payload:
