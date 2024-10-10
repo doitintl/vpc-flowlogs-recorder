@@ -254,35 +254,80 @@ Resources:
             Type: "Pass"
             Next: "Check-NGW-ID"
             Result: 
-              NumOfRecordings: !Ref NumOfRecordings
-            ResultPath: $
+              NumOfRecordings:
+              Fn::Transform:
+                Name: "StringToInt-F39F5A878973"
+                Parameters:
+                  Value: !Ref NumOfRecordings
+            ResultPath: $.NumOfRecordings
           Check-NGW-ID:
             InputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
-            Next: "ShouldWeRecord?"
+            Next: "Were Flow Logs recorded yet?"
             Parameters:
               Key:
                 ngwid.$: "$"
               TableName: !Ref NGWFlowlogsTable
             Resource: "arn:aws:states:::dynamodb:getItem"
-            ResultPath: "$.taskresult"
+            ResultPath: $.taskresult
             Type: "Task"
-          ShouldWeRecord?:
-            Choices:
-              - IsPresent: true
-                Next: "VPCflAlreadyRecorded"
-                Variable: "$.taskresult.Item.ngwid.S"
-            Default: "Extract-NGW-ID"
+          "Were Flow Logs recorded yet?":
             Type: "Choice"
+            Choices:
+              - IsPresent: false
+                Variable: "$.taskresult.Item.ngwid.S"
+                Next: "AddNGW-ID"
+                Comment: If not recorded yet - go to add the Item to dynamoDB
+            Default: "Convert Numbers"
+          "Convert Numbers":
+            Type: "Pass"
+            Next: "ShouldWeRecord?"
+            Parameters:
+              val.$: "States.StringToJson($.taskresult.Item.NumOfRecordings.N)"
+            ResultPath: $.RecordedSoFar
+          ShouldWeRecord?:
+            Type: Choice
+            Choices:
+              - And:
+                  - Variable: "$.taskresult.Item.ngwid.S"
+                    IsPresent: true
+                  - Variable: "$.NumOfRecordings"
+                    NumericGreaterThan: 0
+                  - Variable: "$.RecordedSoFar.val"
+                    NumericGreaterThanEqualsPath: "$.NumOfRecordings"
+                Comment: "Recorded Max Times"
+                Next: VPCflAlreadyRecorded
+            Default: "Increment Number Of Recordings"
+          "Increment Number Of Recordings":
+            Type: Task
+            Resource: arn:aws:states:::dynamodb:updateItem
+            Parameters:
+              TableName: !Ref NGWFlowlogsTable
+              Key:
+                ngwid:
+                  S.$: $.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId
+              UpdateExpression: "ADD NumOfRecordings :inc"
+              ExpressionAttributeValues:
+                ":inc":
+                  N: "1"
+            Next: Extract-NGW-ID
+            ResultPath: null            
           AddNGW-ID:
-            Next: "ActivateVPCFlowLog"
+            Next: Extract-NGW-ID
             Parameters:
               Item:
                 ngwid:
-                  S.$: "$.ngwid"
+                  S.$: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+                NumOfRecordings:
+                  N: "1"
               TableName: !Ref NGWFlowlogsTable
             Resource: "arn:aws:states:::dynamodb:putItem"
             ResultPath: null
             Type: "Task"
+          Extract-NGW-ID:
+            Next: "ActivateVPCFlowLog"
+            Type: "Pass"
+            Parameters:
+              ngwid.$: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
           ActivateVPCFlowLog:
             Next: "WaitForAlarmOrTimeout"
             Parameters:
@@ -329,11 +374,6 @@ Resources:
             Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
             Type: "Task"
             ResultPath: null
-          Extract-NGW-ID:
-            Next: "AddNGW-ID"
-            Type: "Pass"
-            Parameters:
-              ngwid.$: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
           NotifySNS:
             End: true
             Parameters:
