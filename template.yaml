@@ -194,6 +194,62 @@ Resources:
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
+  AlarmEndedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub
+        - VPCFlowLogs-AlarmEnded-${Suffix}
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
+      Handler: notify_alarm_ended.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      CodeUri: ./src-notify_alarm_ended
+      Policies:
+        - AWSLambdaExecute
+        - CloudWatchLogsFullAccess
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt NGWFlowlogsTable.Arn
+            - Effect: Allow
+              Action:
+                - states:SendTaskSuccess
+              Resource: !GetAtt StepFunction.Arn
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: !GetAtt VPCFlowLogRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref NGWFlowlogsTable         
+
+  # Add a permission for the EventBridge rule "CloudWatchEventRuleAlarmOff" to invoke the Alarm Ended Lambda function
+  AlarmEndedFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AlarmEndedFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CloudWatchEventRuleAlarmOff.Arn 
+
+  AlarmEndedFunctionCloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AlarmEndedFunction}
+      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
+      LogGroupClass: INFREQUENT_ACCESS
+
   DeleteVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -417,10 +473,22 @@ Resources:
                   - sns:publish
                 Resource: !Ref NatGatewayFlowLogsTopic
 
-  CloudWatchEventRule:
+  # Define the CloudWatch Event Rule for Nat Gateway Alarm ON
+  CloudWatchEventRuleAlarmOn:
     Type: AWS::Events::Rule
     Properties:
-      Description: EventBridge rule for CloudWatch Alarm State Change
+      Name: !Sub 
+        - NatGatewayAlarmON-${Suffix}
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
+      Description: EventBridge rule when a Nat Gateway is triggered by an Alarm on BytesInFromDestination 
       EventPattern:
         detail-type:
           - CloudWatch Alarm State Change
@@ -442,9 +510,10 @@ Resources:
       Targets:
         - Arn: !Ref StepFunction
           Id: StepFunctionTarget
-          RoleArn: !GetAtt CloudWatchEventRole.Arn
+          RoleArn: !GetAtt CloudWatchEventAlarmOnRole.Arn
 
-  CloudWatchEventRole:
+  # Define the Role for the CloudWatch Event Rule for Nat Gateway Alarm ON
+  CloudWatchEventAlarmOnRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -462,6 +531,64 @@ Resources:
               - Effect: Allow
                 Action: states:StartExecution
                 Resource: !Ref StepFunction
+
+  # Define the CloudWatch Event Rule for Nat Gateway Alarm Off
+  CloudWatchEventRuleAlarmOff:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 
+        - NatGatewayAlarmOFF-${Suffix}
+        - Suffix: !Select
+            - 4
+            - !Split
+              - '-'
+              - !Select
+                - 2
+                - !Split
+                  - /
+                  - !Ref AWS::StackId
+      Description: EventBridge rule when a Nat Gateway is triggered by the end of an Alarm on BytesInFromDestination 
+      EventPattern:
+        detail-type:
+          - CloudWatch Alarm State Change
+        source:
+          - aws.cloudwatch
+        detail:
+          state:
+            value:
+              - OK
+          configuration:
+            metrics:
+              metricStat:
+                metric:
+                  namespace:
+                    - AWS/NATGateway
+                  name:
+                    - BytesInFromDestination
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt AlarmEndedFunction.Arn
+          Id: LambdaTarget
+
+  # Define the Role for the CloudWatch Event Rule for Nat Gateway Alarm OFF
+  CloudWatchEventRuleAlarmOffRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowInvokeLambdaFunction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt AlarmEndedFunction.Arn
 
   VPCFlowLogRole:
     Type: AWS::IAM::Role
