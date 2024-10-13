@@ -1,5 +1,6 @@
 import json
 import boto3
+import os
 from botocore.exceptions import ClientError
 
 dynamodb = boto3.client('dynamodb')
@@ -9,9 +10,8 @@ stepFunction = boto3.client('stepfunctions')
 # It checks if the token is still define in DynamoDB for this Nat Gateway ID, and if it is
 # it will send a Task Success to the State Machine via the token
 def lambda_handler(event, context):
-    tableName = event['params']['tableName'];
-    ngwid = event['params']['ngwid']
-    stepFunction
+    tableName = os.getenv('TABLE_NAME');
+    ngwid = event['detail']['configuration']['metrics'][0]['metricStat']['metric']['dimensions']['NatGatewayId']
     
     tokenID = getToken(tableName, ngwid)
     

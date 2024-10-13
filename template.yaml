@@ -635,6 +635,10 @@ Outputs:
     Description: Store Wait Token Lambda Function Console Link
     Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${StoreWaitTokenFunction}
 
+  AlarmEndedFunction:
+    Description: Cloudwatch Nat Gateway Alarm Ended Function Console Link
+    Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${AlarmEndedFunction}    
+
   DeleteVPCFlowLogFunction:
     Description: Delete VPC Flow Log Lambda Function Console Link
     Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${DeleteVPCFlowLogFunction}
