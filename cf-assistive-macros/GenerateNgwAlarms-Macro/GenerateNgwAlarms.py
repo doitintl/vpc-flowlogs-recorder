@@ -86,7 +86,7 @@ def lambda_handler(event, context):
     # - Update the values with the parameters
     # - Add new resource to array
     for i, nat_id in enumerate(nat_gateway_ids_list):
-      NatGatewayAlarm = BuildDualMetricAlarm(SamplingPeriod, EvaluationPeriods, DatapointsToAlarm, Threshold)
+      NatGatewayAlarm = BuildDualMetricAlarm(nat_id, SamplingPeriod, EvaluationPeriods, DatapointsToAlarm, Threshold)
       ResourceName = f"NATGatewayAlarm{i + 1}"
 
       # Add the new resource to the resource array
@@ -101,13 +101,10 @@ def lambda_handler(event, context):
 
 # Load and initialize an alarm with a two metrics
 def BuildDualMetricAlarm(nat_id, SamplingPeriod, EvaluationPeriods, DatapointsToAlarm, Threshold):
-      NatGatewayAlarm = json.loads(NatGatewaySingleMetricTemplate)
+      NatGatewayAlarm = json.loads(NatGatewayDualMetricTemplate)
       NatGatewayAlarm['Properties']['AlarmName'] = f"NatGateway Alarm for: {nat_id}"
-      NatGatewayAlarm['Properties']['Dimensions'][0]['Value'] = nat_id
-      NatGatewayAlarm['Properties']['Period'] = int(SamplingPeriod)
       NatGatewayAlarm['Properties']['EvaluationPeriods'] = int(EvaluationPeriods)
       NatGatewayAlarm['Properties']['DatapointsToAlarm'] = int(DatapointsToAlarm)
-      NatGatewayAlarm['Properties']['Threshold'] = int(Threshold)
 
       # Update the Value for Nat ID in the "m1" and "m2" elements
       NatGatewayAlarm['Properties']['Metrics'][1]['MetricStat']['Metric']['Dimensions'][0]['Value'] = nat_id
