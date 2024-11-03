@@ -317,7 +317,7 @@ Resources:
                   Value: !Ref NumOfRecordings
             ResultPath: $.NumOfRecordings
           Check-NGW-ID:
-            InputPath: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+            InputPath: "$.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId"
             Next: "Were Flow Logs recorded yet?"
             Parameters:
               Key:
@@ -360,7 +360,7 @@ Resources:
               TableName: !Ref NGWFlowlogsTable
               Key:
                 ngwid:
-                  S.$: $.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId
+                  S.$: $.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId
               UpdateExpression: "ADD NumOfRecordings :inc"
               ExpressionAttributeValues:
                 ":inc":
@@ -372,7 +372,7 @@ Resources:
             Parameters:
               Item:
                 ngwid:
-                  S.$: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+                  S.$: "$.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId"
                 NumOfRecordings:
                   N: "1"
               TableName: !Ref NGWFlowlogsTable
@@ -383,7 +383,7 @@ Resources:
             Next: "ActivateVPCFlowLog"
             Type: "Pass"
             Parameters:
-              ngwid.$: "$.detail.configuration.metrics[0].metricStat.metric.dimensions.NatGatewayId"
+              ngwid.$: "$.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId"
           ActivateVPCFlowLog:
             Next: "WaitForAlarmOrTimeout"
             Parameters:
