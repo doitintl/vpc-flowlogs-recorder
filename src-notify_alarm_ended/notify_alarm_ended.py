@@ -11,7 +11,7 @@ stepFunction = boto3.client('stepfunctions')
 # it will send a Task Success to the State Machine via the token
 def lambda_handler(event, context):
     tableName = os.getenv('TABLE_NAME');
-    ngwid = event['detail']['configuration']['metrics'][0]['metricStat']['metric']['dimensions']['NatGatewayId']
+    ngwid = event['detail']['configuration']['metrics'][1]['metricStat']['metric']['dimensions']['NatGatewayId']
     
     tokenID = getToken(tableName, ngwid)
     
