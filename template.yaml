@@ -488,7 +488,7 @@ Resources:
                 - !Split
                   - /
                   - !Ref AWS::StackId
-      Description: EventBridge rule when a Nat Gateway is triggered by an Alarm on BytesInFromDestination 
+      Description: EventBridge rule when a Nat Gateway is triggered by an Alarm on BytesInFromDestination or BytesInFromSource
       EventPattern:
         detail-type:
           - CloudWatch Alarm State Change
@@ -506,6 +506,11 @@ Resources:
                     - AWS/NATGateway
                   name:
                     - BytesInFromDestination
+                    - BytesInFromSource
+                  dimensions:
+                    NatGatewayId:
+                      !Split [",", !Ref NatGatewayIDs]
+             
       State: ENABLED
       Targets:
         - Arn: !Ref StepFunction
@@ -547,7 +552,7 @@ Resources:
                 - !Split
                   - /
                   - !Ref AWS::StackId
-      Description: EventBridge rule when a Nat Gateway is triggered by the end of an Alarm on BytesInFromDestination 
+      Description: EventBridge rule when a Nat Gateway is triggered by the end of an Alarm on BytesInFromDestination or BytesInFromD
       EventPattern:
         detail-type:
           - CloudWatch Alarm State Change
@@ -565,6 +570,10 @@ Resources:
                     - AWS/NATGateway
                   name:
                     - BytesInFromDestination
+                    - BytesInFromSource
+                  dimensions:
+                    NatGatewayId:
+                      !Split [",", !Ref NatGatewayIDs]
       State: ENABLED
       Targets:
         - Arn: !GetAtt AlarmEndedFunction.Arn
