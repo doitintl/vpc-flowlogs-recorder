@@ -94,7 +94,7 @@ You can uninstall in two ways:
 
 1. Via the AWS CloudFormation Console, locate the two stacks starting with the names you gave them during installation and delete them.
 
-2. By going to the VPC-FlowLogs-Recorder directory (where you cloned the git repository into)  
+2. By going to the VPCFlowLogs-Recorder directory (where you cloned the git repository into)  
     - First run the following:  
       `sam delete --no-prompts`
     - Then cd into the cf-assistive-macros directory and run the same command there  
