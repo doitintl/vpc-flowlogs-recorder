@@ -89,9 +89,20 @@ Once the deployment completes successfully continue to install the main solution
    - Accept the defaults for the rest of the parameters
 
 
+<h1>Uninstalling</h1>
+You can uninstall in two ways:  
 
+1. Via the AWS CloudFormation Console, locate the two stacks starting with the names you gave them during installation and delete them.
 
-   
+2. By going to the VPC-FlowLogs-Recorder directory (where you cloned the git repository into)  
+    - First run the following:  
+      `sam delete --no-prompts`
+    - Then cd into the cf-assistive-macros directory and run the same command there  
+      `cd cf-assistive-macros`
+      `sam delete --no-prompts`
+
+Note that the CloudWatch Logs where the VPC FlowLogs were delivered to will remain after uninstalling the solution.
+Its contents will be removed based on the value you entered in **VPCFlowLogRetentionTimeDays** during installation.
 
 
 <h3>The Step Function's Diagram</h3>
