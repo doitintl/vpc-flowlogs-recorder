@@ -41,7 +41,7 @@ The second deployment creates the following resources:
 [SAM Installation Instructions](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 
 2. Clone the repository  
-   `git clone git@github.com:SageTomas/VPC-FlowLogs-Recorder.git`
+   `git clone git@github.com:SageTomas/VPCFlowLogs-Recorder.git`
 
 <h3>Deploy the Macros</h3>
 
@@ -62,7 +62,7 @@ The second deployment creates the following resources:
 
 Once the deployment completes successfully continue to install the main solution.
 
-7. Return to the parent folder (the VPC-FlowLogs-Recorder)  
+7. Return to the parent folder (the VPCFlowLogs-Recorder)  
    `cd ..`
 
 8. Build the deployment package  
