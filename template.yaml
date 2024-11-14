@@ -43,7 +43,7 @@ Parameters:
 
   Threshold:
     Type: Number
-    Default: 1000000
+    Default: 100000000
     MinValue: 1000
     Description: The threshold for the alarm
   
@@ -669,10 +669,3 @@ Outputs:
     Value: !Sub
       - "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logStream:group=${LogGroupName}"
       - LogGroupName: !Ref VPCFlowLogsCloudWatchLogGroup
- 
-
-  # NATGatewayAlarmLink:
-  #   Description: "Link to the NAT Gateway CloudWatch Alarm"
-  #   Value: !Sub
-  #     - "https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#alarmsV2:alarm/${AlarmName}"
-  #     - AlarmName: !Ref NATGatewayAlarm
