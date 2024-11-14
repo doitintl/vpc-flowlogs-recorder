@@ -37,4 +37,4 @@ The second deployment creates the following resources:
   - The Lambda retrieves the Step Function callback Token from Dynamo DB and calls the Step Function to resume its operation
 
 <h3>The Step Function's Diagram</h3>
-![step function](https://github.com/SageTomas/VPC-FlowLogs/blob/main/stepfunctions_graph.svg)
+![stepfunctions_graph](https://github.com/user-attachments/assets/d46f57b1-212b-4289-b655-f37e6e8b65f9)
