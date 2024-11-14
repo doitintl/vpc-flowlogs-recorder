@@ -98,7 +98,7 @@ You can uninstall in two ways:
     - First run the following:  
       `sam delete --no-prompts`
     - Then cd into the cf-assistive-macros directory and run the same command there  
-      `cd cf-assistive-macros`
+      `cd cf-assistive-macros`  
       `sam delete --no-prompts`
 
 Note that the CloudWatch Logs where the VPC FlowLogs were delivered to will remain after uninstalling the solution.
