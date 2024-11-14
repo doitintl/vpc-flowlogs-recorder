@@ -35,8 +35,34 @@ The second deployment creates the following resources:
   - Sends an SNS Email notification to whomever you specified when deploying the solution
 - A Lambda function that is triggered by the EventBridge Rule that matches the Alarm returning to "OK"
   - The Lambda retrieves the Step Function callback Token from Dynamo DB and calls the Step Function to resume its operation
+<h1>Installation</h1>
+
+1. You must have SAM CLI installed:  
+[SAM](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
+
+2. Clone the repository  
+git clone git@github.com:SageTomas/VPC-FlowLogs.git
+
+<h3>Deploy the Macros</h3>
+3. CD into the assistive Macros
+   cd cf-assistive-macros
+4. Build the deployment package
+   sam build
+5. Deploy the Macros
+   sam deploy --guided
+   - **Stack Name**: Enter a meaningful stack name such as: VPCFlowLogs-Assistive-Macros
+   - **AWS Region**: Enter the AWS Region you want to deploy the solution in
+   - **LambdaGroupRetentionTimeDays**: How many days to you want to store the logs for the Macro Lambdas
+   - Accet the defaults for the rest of the parameters
+<h3>Deploy the main solution</h3>
+
+Once the deployment completes successfully continue to install the main solution.
+7. Return to the parent folder (the VPC-FlowLogsRecorder)
+
+   
+
 
 <h3>The Step Function's Diagram</h3>
-<p align="center">
-  <img src="stepfunctions_graph.svg">
-</p>
+
+![State Machine](stepfunctions_graph.svg)
+
