@@ -47,7 +47,7 @@ It has various limitations, but:
 In this solution, I use the following VPC Flow Log row format:  
 ```${action} ${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}```
 
-You can find information abou these fields [here](https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html#flow-logs-fields).
+You can find information about these fields [here](https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html#flow-logs-fields).
 
 To be able to view the data in a human friendly format you can use the following query inside of CloudWatch Logs Insight:
 
