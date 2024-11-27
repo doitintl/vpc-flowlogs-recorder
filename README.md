@@ -53,19 +53,23 @@ To be able to view the data in a human friendly format you can use the following
 
 ```
 fields @timestamp, @message
-| parse @message "* * * * * * * * * * * * * *" as action, flowDirection, trafficPathNum, srcAddr, srcPort, dstAddr, dstPort, protocol, bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
-| display @timestamp, action, flowDirection,
-       if(trafficPathNum == 1, "Through another resource in the same VPC",
-       if(trafficPathNum == 2, "Through an internet gateway or a gateway VPC endpoint",
-       if(trafficPathNum == 3, "Through a virtual private gateway",
-       if(trafficPathNum == 4, "Through an intra-region VPC peering connection",
-       if(trafficPathNum == 5, "Through an inter-region VPC peering connection",
-       if(trafficPathNum == 6, "Through a local gateway",
-       if(trafficPathNum == 7, "Through a gateway VPC endpoint (Nitro-based instances only)",
-       if(trafficPathNum == 8, "Through an internet gateway (Nitro-based instances only)",
-       "unknown")))))))) as trafficPath,
-       srcAddr, srcPort, dstAddr, dstPort, protocol, bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
-| sort @timestamp desc
+| parse @message "* * * * * * * * * * * * * *" as action, flowDirection, trafficPathNum, srcAddr, srcPort, dstAddr, dstPort, proto, bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
+| display @timestamp, action, flowDirection, 
+        if(trafficPathNum == 1, "Through another resource in the same VPC",
+        if(trafficPathNum == 2, "Through an internet gateway or a gateway VPC endpoint",
+        if(trafficPathNum == 3, "Through a virtual private gateway",
+        if(trafficPathNum == 4, "Through an intra-region VPC peering connection",
+        if(trafficPathNum == 5, "Through an inter-region VPC peering connection",
+        if(trafficPathNum == 6, "Through a local gateway",
+        if(trafficPathNum == 7, "Through a gateway VPC endpoint (Nitro-based instances only)",
+        if(trafficPathNum == 8, "Through an internet gateway (Nitro-based instances only)",
+        "unknown")))))))) as trafficPath,
+        srcAddr, srcPort, dstAddr, dstPort, 
+        if(proto == 6, "TCP",
+        if(proto == 17, "UDP",
+        proto)) as protocol,
+        bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
+| sort @timestamp desc 
 | limit 1000
 ```
 
