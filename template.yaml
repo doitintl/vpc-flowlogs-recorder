@@ -394,7 +394,7 @@ Resources:
           WaitForAlarmOrTimeout:
             Type: Task
             Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
-            HeartbeatSeconds:
+            TimeoutSeconds:
               Fn::Transform:
                 Name: "StringToInt-F39F5A878973"
                 Parameters:
@@ -410,6 +410,7 @@ Resources:
                   - States.Timeout
                 ResultPath: null
                 Next: RemoveToken
+                Comment: "Timeout"
             ResultPath: null
             Next: RemoveToken     
           RemoveToken:

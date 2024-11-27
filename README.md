@@ -35,6 +35,45 @@ The second deployment creates the following resources:
   - Sends an SNS Email notification to whomever you specified when deploying the solution
 - A Lambda function that is triggered by the EventBridge Rule that matches the Alarm returning to "OK"
   - The Lambda retrieves the Step Function callback Token from Dynamo DB and calls the Step Function to resume its operation
+
+<h1>How to view the data collected in the VPC Flow Logs</h1>
+
+This solution is set to use CloudWatch Logs Group Infrequent Access storage Class.
+It has various limitations, but:
+
+1. It is 50% cheaper than the standard class when ingesting reports
+2. For our purpose of querying it with CloudWatch Logs Insight it is an adequate (and actually a very good) solution
+
+In this solution, I use the following VPC Flow Log row format:  
+```${action} ${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}```
+
+You can find information abou these fields [here](https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html#flow-logs-fields).
+
+To be able to view the data in a human friendly format you can use the following query inside of CloudWatch Logs Insight:
+
+```
+fields @timestamp, @message
+| parse @message "* * * * * * * * * * * * * *" as action, flowDirection, trafficPathNum, srcAddr, srcPort, dstAddr, dstPort, protocol, bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
+| display @timestamp, action, flowDirection,
+       if(trafficPathNum == 1, "Through another resource in the same VPC",
+       if(trafficPathNum == 2, "Through an internet gateway or a gateway VPC endpoint",
+       if(trafficPathNum == 3, "Through a virtual private gateway",
+       if(trafficPathNum == 4, "Through an intra-region VPC peering connection",
+       if(trafficPathNum == 5, "Through an inter-region VPC peering connection",
+       if(trafficPathNum == 6, "Through a local gateway",
+       if(trafficPathNum == 7, "Through a gateway VPC endpoint (Nitro-based instances only)",
+       if(trafficPathNum == 8, "Through an internet gateway (Nitro-based instances only)",
+       "unknown")))))))) as trafficPath,
+       srcAddr, srcPort, dstAddr, dstPort, protocol, bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
+| sort @timestamp desc
+| limit 1000
+```
+
+<h3>Determining if the Nat Gateway is used to communicate with an AWS Service via the internet instead of through a VPC Endpoint</h3>
+If traffic is happening with a specific AWS Service, its name will apear under the 'SrcService' or 'DstService' fields.  
+Seeing a service there means that there is no VPC Endpoint set up for the service.  
+Unless you have a very specific reason not to define a VPC Endpoint, you should do so as it is more secure (all traffic is internal to AWS Network) and also cheaper than using the Nat Gateway.  
+<br><br/>
 <h1>Installation</h1>
 
 1. You must have SAM CLI installed:  
