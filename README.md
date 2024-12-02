@@ -1,50 +1,20 @@
-<h1> Create Temporary VPC Flow Logs for Nat Gateway when heavy traffic is detected</h1>
+<h1>VPC FlowLogs Recorder for Network Spikes on NAT Gateways</h1>
 
-<h3>The Problem</h3>
-Constantly recording VPC Flow Logs may generate a lot of data with its associated costs, and record information that during "normal times" may not interest you.
-Though it is possible to query the logs over a specific time frame when needed, why store data that you don't need?
+This is a serverless solution to create VPC FlowLogs to record spiky traffic in NAT Gateways.  
+For a full explanation visit [this blog post]().
 
-<h3>The Solution</h3>
-The concept of this solution is to create VPC Flow Logs when spiky unexpected traffic is detected that is above a certain threshold.
-Let's assume you normally have a regular traffic of 10MB per minute via your Nat Gateway.
-Volume wise, this would come up to 10MB X 1440 (minutes per day) * 30.5 (days per month)  = 439GB
-The NAT Gateway Data **Processing** Charge per GB in N.Virginia is $0.045.
-So the monthly cost would be: 493 * 0.045 = $19.764
-A very low cost.
 
-In cases where you have code that suddenly and unexpectedly sends or receives a much higher traffic volume over a period of time that isn't measured in a minute or two, you would like to be able to understand the reason behind this traffic.
-Specifically the source and destination.
-This will allow you to investigate why it happened and if it is ok or not.
+<h2>The Problem</h2>
 
-This repository contains code that is deployable via AWS SAM.
-It has two different SAM Yaml file deploying two different CloudFormation Stacks.
-The first contains CloudFormation Macros used by the second template.
-It has a macro to auto generate the CloudWatch Alarm for each specified Nat Gateway
-It has another macro to convert String to Int due to an issue with CloudFormation Parameters always being treated as Strings.
+Dealing with unexpected traffic spikes in AWS's Network Address Translation (NAT) Gateways Service can be challenging. While VPC Flow Logs provide valuable insights into network traffic, constantly recording them can lead to unnecessary storage costs and a deluge of data that might not be relevant during normal operations.
+What if you could selectively enable VPC Flow Logs only when a surge in traffic is detected?
 
-The second deployment creates the following resources:
-- DynamoDB Table that handles the number of recording done per Nat Gateway as well as holds a Callback Token to be used when the Alarm returns to "OK"
-- A Cloudwatch Alarm that monitors specific Nat Gateways that you specify as well as a Threshold for the amount of data.
-- An EventBridge Rule that matches this Alarm and triggers a Step Function
-- An EventBridge Rule that matches this Alarm when it returns to "Ok" and triggers a Lambda function
-- A Step function that:
-  - Ensures that the desired number of recordings hasn't been reached
-  - Handles creation of VPC Flow Logs for each ENI belonging to the Nat Gateways
-  - Waits for the Alarm to return to "Ok" or a certain time (that you define while deploying the SAM Template) passes
-  - Deletes the Recording of the VPC Flow Logs (don't delete the recorded logs of course)
-  - Sends an SNS Email notification to whomever you specified when deploying the solution
-- A Lambda function that is triggered by the EventBridge Rule that matches the Alarm returning to "OK"
-  - The Lambda retrieves the Step Function callback Token from Dynamo DB and calls the Step Function to resume its operation
+<h2>The Solution</h2>
 
-<h1>How to view the data collected in the VPC Flow Logs</h1>
+The solution ensures that VPC Flow Logs are recorded when a NAT Gatway's traffic surpasses a certain threshold. For instance, if the regular traffic pattern for a NAT Gateway is 10MB per minute, you could set an alarm to trigger when traffic exceeds 100MB per minute for a specific duration.
+This solution won't be practical for short-lived traffic spikes because VPC Flow Logs will only be created after such a spike is detected. Though the spike doesn't need to be very long to be captured, it must be longer than 3 minutes to ensure it starts recording the traffic.
 
-This solution is set to use CloudWatch Logs Group Infrequent Access storage Class.
-It has various limitations, but:
-
-1. It is 50% cheaper than the standard class when ingesting reports
-2. For our purpose of querying it with CloudWatch Logs Insight it is an adequate (and actually a very good) solution
-
-In this solution, I use the following VPC Flow Log row format:  
+This solution uses the following VPC Flow Log row format:  
 ```${action} ${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}```
 
 You can find information about these fields [here](https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html#flow-logs-fields).
@@ -73,10 +43,9 @@ fields @timestamp, @message
 | limit 1000
 ```
 
-<h3>Determining if the Nat Gateway is used to communicate with an AWS Service via the internet instead of through a VPC Endpoint</h3>
 If traffic is happening with a specific AWS Service, its name will apear under the 'SrcService' or 'DstService' fields.  
-Seeing a service there means that there is no VPC Endpoint set up for the service.  
-Unless you have a very specific reason not to define a VPC Endpoint, you should do so as it is more secure (all traffic is internal to AWS Network) and also cheaper than using the Nat Gateway.  
+Seeing a service name there means that there is no VPC Endpoint set up for that service.  
+Unless you have a very specific reason not to define a VPC Endpoint, you should do so as it is more secure (all traffic is internal to AWS Network) and also cheaper than using the NAT Gateway.  
 <br><br/>
 <h1>Installation</h1>
 
@@ -118,10 +87,10 @@ Once the deployment completes successfully continue to install the main solution
    - **VPCFlowLogRetentionTimeDays**: How many days to you want to store the logs for the VPCFlowLogs that will be recorded
    - **LambdaLogGroupRetentionTimeDays**: How many days to you want to store the logs for the two Lambdas used in the solution
    - **EmailAddress**: The email of the person that will be notifed after each recording
-   - **NatGatewayIDs**: A comma separated Nat Gateway IDs for the Nat Gateways you want to activate the VPC FLowLogs on
+   - **NatGatewayIDs**: A comma separated NAT Gateway IDs for the NAT Gateways you want to activate the VPC FLowLogs on
    - **SamplingPeriod**: How many seconds do you want the CloudWatch Alarm to sample the metrics (you can use the default value)
    - **EvaluationPeriods**: How many periods of sampling should be evaluated (leave the default unless you have a good reason to change it)
-   - **Threshold**: What is the threshold in bytes that if the traffic through the Nat Gateway exceeds the alarm should be set?
+   - **Threshold**: What is the threshold in bytes that if the traffic through the NAT Gateway exceeds the alarm should be set?
                     Current default is 100MB. You can change it as per your use case
    - **DatapointsToAlarm**: How many datapoints with threshold exceeding value should be examined?
                             (Leave the default unless you have your own good reason to change it)
