@@ -84,7 +84,7 @@ Unless you have a very specific reason not to define a VPC Endpoint, you should 
 [SAM Installation Instructions](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 
 2. Clone the repository  
-   `git clone git@github.com:SageTomas/VPCFlowLogs-Recorder.git`
+   `git clone https://github.com/doitintl/vpc-flowlogs-recorder.git`
 
 <h3>Deploy the Macros</h3>
 
@@ -96,7 +96,7 @@ Unless you have a very specific reason not to define a VPC Endpoint, you should 
 
 5. Deploy the Macros  
    `sam deploy --guided`
-   - **Stack Name**: Enter a meaningful stack name such as: VPCFlowLogs-Recorder-Assistive-Macros
+   - **Stack Name**: Enter a meaningful stack name such as: vpc-flowlogs-recorder-assistive-macros
    - **AWS Region**: Enter the AWS Region you want to deploy the solution in
    - **LambdaGroupRetentionTimeDays**: How many days to you want to store the logs for the Macro Lambdas
    - Accept the defaults for the rest of the parameters
@@ -105,7 +105,7 @@ Unless you have a very specific reason not to define a VPC Endpoint, you should 
 
 Once the deployment completes successfully continue to install the main solution.
 
-7. Return to the parent folder (the VPCFlowLogs-Recorder)  
+7. Return to the parent folder (the vpc-flowlogs-recorder)  
    `cd ..`
 
 8. Build the deployment package  
@@ -113,7 +113,7 @@ Once the deployment completes successfully continue to install the main solution
 
 9. Deploy the solution  
    `sam deploy --guided`
-   - **Stack Name**: Enter a meaningful stack name such as: VPCFlowLogs-Recorder
+   - **Stack Name**: Enter a meaningful stack name such as: vpc-flowlogs-recorder
    - **AWS Region**: Enter the AWS Region you want to deploy the solution in
    - **VPCFlowLogRetentionTimeDays**: How many days to you want to store the logs for the VPCFlowLogs that will be recorded
    - **LambdaLogGroupRetentionTimeDays**: How many days to you want to store the logs for the two Lambdas used in the solution
@@ -137,7 +137,7 @@ You can uninstall in two ways:
 
 1. Via the AWS CloudFormation Console, locate the two stacks starting with the names you gave them during installation and delete them.
 
-2. By going to the VPCFlowLogs-Recorder directory (where you cloned the git repository into)  
+2. By going to the vpc-flowlogs-recorder directory (where you cloned the git repository into)  
     - First run the following:  
       `sam delete --no-prompts`
     - Then cd into the cf-assistive-macros directory and run the same command there  
