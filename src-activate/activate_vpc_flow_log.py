@@ -10,32 +10,32 @@ def lambda_handler(event, context):
     
     log_group_name = os.environ['LOG_GROUP_NAME']
     
-    # Get Nat Gateway ID
+    # Get NAT Gateway ID
 #    nat_gateway_id = event['alarmData']['configuration']['metrics'][0]['metricStat']['metric']['dimensions']['NatGatewayId']
     nat_gateway_id = event['ngwid']
     
-    enis, vpc_id = get_eni_from_natgateway(nat_gateway_id)
+    eni = get_eni_from_natgateway(nat_gateway_id)
 
     flow_log_ids = []
     log_format = '${action} ${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}'
     
-    for eni in enis:
-        try:
-            response = client.create_flow_logs(
-                ResourceIds=[eni],
-                ResourceType='NetworkInterface',
-                TrafficType='ALL',
-                LogGroupName=log_group_name,
-                DeliverLogsPermissionArn= os.environ['VPC_FLOW_LOG_ROLE'],
-                LogFormat=log_format
-            )
-            flow_log_ids.append(response['FlowLogIds'][0])
-        except Exception as e:
-            print("Failed to create VPC Flow log with", str(e))
+    # Create the VPC Flow Logs for the NAT Gateway's ENI
+    try:
+        response = client.create_flow_logs(
+            ResourceIds=[eni],
+            ResourceType='NetworkInterface',
+            TrafficType='ALL',
+            LogGroupName=log_group_name,
+            DeliverLogsPermissionArn= os.environ['VPC_FLOW_LOG_ROLE'],
+            LogFormat=log_format
+        )
+        flow_log_ids.append(response['FlowLogIds'][0])
+    except Exception as e:
+        print("Failed to create VPC Flow log with", str(e))
     
     return {
         'statusCode': 200,
-        'body': { 'FlowLogIds' : flow_log_ids, 'ENIs' : enis }
+        'body': { 'FlowLogIds' : flow_log_ids, 'ENI' : eni }
     } 
 
 
@@ -44,19 +44,16 @@ def get_eni_from_natgateway(nat_gateway_id):
         'NatGatewayIds': [nat_gateway_id]
     }
     
-    enis = []
-    vpc_id = None
+    eni = None
 
     try:
         response = client.describe_nat_gateways(**params)
-        if len(response['NatGateways']) > 0:  # Found the Natgateway's ENI(s)
-            vpc_id = response['NatGateways'][0]['VpcId']
-            for eni in response['NatGateways'][0]['NatGatewayAddresses']:
-                enis.append(eni['NetworkInterfaceId'])
-            print("Found ENI associated with NAT Gateway", enis)
+        if len(response['NatGateways']) > 0:  # Found the NAT Gateway's ENI(s)
+            eni = response['NatGateways'][0]['NatGatewayAddresses'][0]['NetworkInterfaceId']
+            print("Found ENI associated with NAT Gateway", eni)
         else:
             print("No NAT Gateway found with the specified ID.")
     except Exception as e:
         print("Failed to describe NAT Gateways with", str(e))
     
-    return enis, vpc_id
+    return eni

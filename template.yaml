@@ -434,8 +434,8 @@ Resources:
           NotifySNS:
             End: true
             Parameters:
-              Message.$: !Sub States.Format('The VPC Flow Logs has been recorded for Nat Gateway {}\nCloudWatch Logs Group {}\nStream Prefix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${VPCFlowLogsCloudWatchLogGroup}', $.taskresult.body.ENIs)                         
-              Subject: "Nat Gateway VPC Flow Log Recorded"
+              Message.$: !Sub States.Format('The VPC Flow Logs has been recorded for NAT Gateway {}\nCloudWatch Logs Group {}\nStream Prefix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${VPCFlowLogsCloudWatchLogGroup}', $.taskresult.body.ENI)                         
+              Subject: "NAT Gateway VPC Flow Log Recorded"
               TopicArn: !Ref NatGatewayFlowLogsTopic
             Resource: "arn:aws:states:::sns:publish"
             Type: "Task"
