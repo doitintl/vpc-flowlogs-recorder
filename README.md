@@ -1,6 +1,7 @@
 <h1>VPC FlowLogs Recorder for Network Spikes on NAT Gateways</h1>
 
 This is a serverless solution to create VPC FlowLogs to record spiky traffic in NAT Gateways.  
+It has an accompanying Medium Blog Post [here](https://medium.com/doit-international/serverless-vpc-flow-logs-recording-nat-gateway-traffic-spikes-a37658821302)
 
 <h2>The Problem</h2>
 
