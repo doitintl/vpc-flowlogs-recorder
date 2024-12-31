@@ -11,7 +11,18 @@ What if you could selectively enable VPC Flow Logs only when a surge in traffic 
 <h2>The Solution</h2>
 
 The solution ensures that VPC Flow Logs are recorded when a NAT Gatway's traffic surpasses a certain threshold. For instance, if the regular traffic pattern for a NAT Gateway is 10MB per minute, you could set an alarm to trigger when traffic exceeds 100MB per minute for a specific duration.
-This solution won't be practical for short-lived traffic spikes because VPC Flow Logs will only be created after such a spike is detected. Though the spike doesn't need to be very long to be captured, it must be longer than 3 minutes to ensure it starts recording the traffic.
+This solution won't be practical for short-lived traffic spikes because VPC Flow Logs will only be created after such a spike is detected. Though the spike doesn't need to be very long to be captured, it must be longer than 3 minutes to ensure it starts recording the traffic.  
+The VPC Flow Logs will stop recording in one of two cases - whichever happens first:  
+1. The Alram returns to OK
+2. The Timeout set to wait for the Alarm expires
+
+The Step Function's state, "WaitForAlaramOrTimeout," is waiting (as the name suggests) for either the Alarm to return to OK or for the Timeout to expire.  
+When the Alarm returns to OK, it is caught by an EventBridge Rule that triggers a Lambda function that checks whether the Step Function's Wait Token still exists in its DynamoDB table. If it does, it sends a send_task_success to the waiting Step Function.  
+The waiting state will then be resumed and transitioned to the next state responsible for deleting the Token from the DynamoDB table.  
+
+If the Timeout expires first, the Step Function will transition to the same next state that deletes the Token from DynamoDB. When the Alarm returns to OK, the Lambda function will not find the Token and end without notifying the Step Function.  
+
+If the Timeout expires and before it has a chance to remove the Token, the Alarm returns to OK so that the Lambda does find the Token; calling the Step Function with send_task_success will have no effect as the state has already stopped waiting and is transitioning to the next state.
 
 This solution uses the following VPC Flow Log row format:  
 ```${action} ${flow-direction} ${traffic-path} ${srcaddr} ${srcport} ${dstaddr} ${dstport} ${protocol} ${bytes} ${type} ${pkt-srcaddr} ${pkt-src-aws-service} ${pkt-dstaddr} ${pkt-dst-aws-service}```
@@ -42,7 +53,7 @@ fields @timestamp, @message
 | limit 1000
 ```
 
-If traffic happens with a specific AWS Service, its name will appear under the 'SrcService' or 'DstService' fields.  
+If traffic is generated to or from an AWS Service, its name will appear under the 'SrcService' or 'DstService' fields.  
 Seeing a service name there means no VPC Endpoint is set up for that service.  
 Unless you have a specific reason not to define a VPC Endpoint, you should do so as it is more secure (all traffic is internal to the AWS Network) and cheaper than the NAT Gateway.  
 <br><br/>
