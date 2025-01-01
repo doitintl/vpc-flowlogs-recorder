@@ -66,6 +66,7 @@ Parameters:
     Description: How many recordings to perform. 0 = whenever there is an Alarm. Above 0 will record only the specified number of Alarms.
 
 Resources:
+  # DynamoDB table to manage number of recording and Step Function Wait Tokens
   NGWFlowlogsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -88,6 +89,7 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
+  # This CloudWatch Logs Group is used to store the VPC Flow Logs recordings
   VPCFlowLogsCloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -106,7 +108,36 @@ Resources:
       LogGroupClass: INFREQUENT_ACCESS
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+  
+  # CloudWatch Logs Query for the VPCFlowLogsCloudWatchLogGroup
+  MyLogInsightsQuery:
+    Type: AWS::Logs::QueryDefinition
+    Properties:
+      Name: "Serverless Auto VPC Flow Log Recorder"
+      QueryString: |
+        fields @timestamp, @message
+        | parse @message "* * * * * * * * * * * * * *" as action, flowDirection, trafficPathNum, srcAddr, srcPort, dstAddr, dstPort, proto, bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
+        | display @timestamp, action, flowDirection, 
+                if(trafficPathNum == 1, "Through another resource in the same VPC",
+                if(trafficPathNum == 2, "Through an internet gateway or a gateway VPC endpoint",
+                if(trafficPathNum == 3, "Through a virtual private gateway",
+                if(trafficPathNum == 4, "Through an intra-region VPC peering connection",
+                if(trafficPathNum == 5, "Through an inter-region VPC peering connection",
+                if(trafficPathNum == 6, "Through a local gateway",
+                if(trafficPathNum == 7, "Through a gateway VPC endpoint (Nitro-based instances only)",
+                if(trafficPathNum == 8, "Through an internet gateway (Nitro-based instances only)",
+                "unknown")))))))) as trafficPath,
+                srcAddr, srcPort, dstAddr, dstPort, 
+                if(proto == 6, "TCP",
+                if(proto == 17, "UDP",
+                proto)) as protocol,
+                bytes, type, pkt_srcaddr, SrcService, pkt_dstaddr, DstService
+        | sort @timestamp desc 
+        | limit 1000
+      LogGroupNames:
+        - !Ref VPCFlowLogsCloudWatchLogGroup
 
+  # Lambda responsible for creating the VPC Flow Log
   ActivateVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -147,6 +178,7 @@ Resources:
           LOG_GROUP_NAME: !Ref VPCFlowLogsCloudWatchLogGroup
           VPC_FLOW_LOG_ROLE: !GetAtt VPCFlowLogRole.Arn
 
+  # This is the CloudWatch Log Group used to store logs from the "ActivateVPCFlowLogFunction" Lambda
   ActivateVPCFlowLogFunctionCloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -154,6 +186,8 @@ Resources:
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
+  # This lambda is responsible for creating the Step Function Wait Token that is
+  # used by the AlarmEndedFunction Lambda function to notify the Step Function to stop waiting
   StoreWaitTokenFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -187,6 +221,7 @@ Resources:
                 - iam:PassRole
               Resource: !GetAtt VPCFlowLogRole.Arn
 
+  # This is the CloudWatch Log Group used to store logs from the "StoreWaitTokenFunction" Lambda function
   StoreWaitTokenFunctionCloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -194,6 +229,7 @@ Resources:
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
+  # This is the Lambda function that is called when the Alarm returns to OK
   AlarmEndedFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -234,7 +270,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref NGWFlowlogsTable         
 
-  # Add a permission for the EventBridge rule "CloudWatchEventRuleAlarmOff" to invoke the Alarm Ended Lambda function
+  # Add a permission for the EventBridge rule "CloudWatchEventRuleAlarmOff" to invoke the "AlarmEndedFunction" Lambda function
   AlarmEndedFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -243,6 +279,7 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt CloudWatchEventRuleAlarmOff.Arn 
 
+  # This is the CloudWatch Log Group used to store logs from the "AlarmEndedFunction" Lambda function
   AlarmEndedFunctionCloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -250,6 +287,7 @@ Resources:
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
+  # This Lambda function deletes (and thus stops) the VPC Flow Log recording process
   DeleteVPCFlowLogFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -281,6 +319,7 @@ Resources:
                 - ec2:DeleteFlowLogs
               Resource: '*'
 
+  # This is the CloudWatch Log Group used to store logs from the "DeleteVPCFlowLogFunction" Lambda function
   DeleteVPCFlowLogFunctionCloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -288,6 +327,8 @@ Resources:
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
+  # This is the Step Function definition.
+  # It is responsible for implementing the main logic of this solution
   StepFunction:
     Type: AWS::Serverless::StateMachine
     Properties:
@@ -447,6 +488,7 @@ Resources:
             Type: "Pass"
       Role: !GetAtt StepFunctionExecutionRole.Arn
 
+  # The IAM Role assigned to the Step Function giving it permissions to access the resources it needs
   StepFunctionExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -510,8 +552,7 @@ Resources:
                     - BytesInFromSource
                   dimensions:
                     NatGatewayId:
-                      !Split [",", !Ref NatGatewayIDs]
-             
+                      !Split [",", !Ref NatGatewayIDs]             
       State: ENABLED
       Targets:
         - Arn: !Ref StepFunction
@@ -600,6 +641,7 @@ Resources:
                 Action: lambda:InvokeFunction
                 Resource: !GetAtt AlarmEndedFunction.Arn
 
+  # This is the IAM Role for the VPC Flow Log so it can create Log Streams and populate them with recorded traffic
   VPCFlowLogRole:
     Type: AWS::IAM::Role
     Properties:
@@ -624,11 +666,13 @@ Resources:
                   - logs:DescribeLogStreams
                 Resource: '*'
 
+  # The SNS Topic used to notify the email entered during deployment that a recording session ended.
   NatGatewayFlowLogsTopic:
     Type: 'AWS::SNS::Topic'
     Properties:
       TopicName: 'NATGatewayFlowLogsRecorded'
 
+  # This is used to create an email subscription to notify the email entered during deployment that a recording session ended.
   EmailSubscription:
     Type: 'AWS::SNS::Subscription'
     Properties: 
@@ -636,6 +680,7 @@ Resources:
       Endpoint: !Ref EmailAddress
       TopicArn: !Ref NatGatewayFlowLogsTopic
 
+# This section creates Output Deep Links in the CloudFormation Stack allowing direct access to various resources created during deployment
 Outputs:
   ActivateVPCFlowLogFunction:
     Description: Activate VPC Flow Log Lambda Function Console Link

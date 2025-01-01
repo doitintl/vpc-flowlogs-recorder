@@ -29,7 +29,9 @@ This solution uses the following VPC Flow Log row format:
 
 You can find information about these fields [here](https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html#flow-logs-fields).
 
-To be able to view the data in a human-friendly format, you can use the following query inside of CloudWatch Logs Insight:
+To be able to view the data in a human-friendly format, you can use the following query inside of CloudWatch Logs Insight.  
+It has been created automatically as part of the deployment and can be found in CloudWatch Logs Insight -> Saved Queries under the name "Serverless Auto VPC Flow Log Recorder."  
+It is already associated with the CloudWatch Log Group where the VPC Recordings are stored, so just by choosing the query it will automatically use the right log group.
 
 ```
 fields @timestamp, @message
@@ -82,7 +84,12 @@ Unless you have a specific reason not to define a VPC Endpoint, you should do so
 
 <h3>Deploy the main solution</h3>
 
-Once the deployment is complete, continue to install the main solution.
+Once the deployment is complete, continue to install the main solution.  
+
+**NOTE!**  
+During the deployment, SNS will send a subscription notification email to the address you entered, so make sure it doesn't end up in your spam folder.  
+Check your spam if you don't see it in your inbox by the time the deployment completes.  
+If you still can't find the subscription confirmation request, you can always go to the topic "NATGatewayFlowLogsRecorded" in SNS, where you can resend the request using "Request Confirmation" in the "Subscriptions" Tab.  
 
 7. Return to the parent folder (the vpc-flowlogs-recorder)  
    `cd ..`
