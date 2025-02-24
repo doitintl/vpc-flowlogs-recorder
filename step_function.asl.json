@@ -1,0 +1,164 @@
+{
+ "Comment": "State Machine to record Nat Gateway spikes in a VPC Flow Log",
+ "QueryLanguage": "JSONata",
+ "StartAt": "Add Number of Recordings To State Machine",
+ "States": {
+   "ActivateVPCFlowLog": {
+     "Resource": "arn:aws:states:::lambda:invoke",
+     "Next": "WaitForAlarmOrTimeout",
+     "Arguments": {
+       "FunctionName": "${ActivateVPCFlowLogLambda}",
+       "Payload" : {
+         "ngwid": "{% $ngwid %}"
+       }
+     },
+     "Assign": {
+       "FlowLogIds": "{% $states.result.Payload.body.FlowLogIds %}",
+       "ENI": "{% $states.result.Payload.body.ENI %}"
+     },
+     "Type": "Task"
+   },
+   "Add Number of Recordings To State Machine": {
+     "Next": "Check-NGW-ID",
+     "Type": "Pass",
+     "Assign": {
+       "NumOfRecordings": "{% $number(${NumOfRecordings}) %}",
+       "ngwid": "{% $states.input.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId %}"
+     }
+   },
+   "AddNGW-ID": {
+     "Type": "Task",
+     "Resource": "arn:aws:states:::dynamodb:putItem",
+     "Next": "ActivateVPCFlowLog",
+     "Arguments": {
+       "Item": {
+         "NumOfRecordings": {
+           "N": "1"
+         },
+         "ngwid": {
+           "S": "{% $ngwid %}"
+         }
+       },
+       "TableName": "${TableName}"
+     }
+   },
+   "Check-NGW-ID": {
+     "Next": "Were Flow Logs recorded yet?",
+     "Resource": "arn:aws:states:::dynamodb:getItem",
+     "Type": "Task",
+     "Arguments": {
+       "Key": {
+         "ngwid": "{% $ngwid %}"
+       },
+       "TableName": "${TableName}"
+     },
+     "Assign": {
+       "NoRecordingYet": "{% $not($exists($states.result.Item.ngwid)) %}",
+       "RecordedSoFar": "{% $exists($states.result.Item.NumOfRecordings) ? $number($states.result.Item.NumOfRecordings.N) : 0 %}"
+     }
+   },
+   "DeleteVPCFlowLog": {
+     "Type": "Task",
+     "Next": "NotifySNS",
+     "Resource": "arn:aws:states:::aws-sdk:ec2:deleteFlowLogs",
+     "Arguments": {
+       "FlowLogIds": "{% $FlowLogIds %}"
+     }
+   },
+   "Increment Number Of Recordings": {
+     "Type": "Task",
+     "Resource": "arn:aws:states:::dynamodb:updateItem",
+     "Next": "ActivateVPCFlowLog",
+     "Arguments": {
+       "ExpressionAttributeValues": {
+         ":inc": {
+           "N": "1"
+         }
+       },
+       "Key": {
+         "ngwid": {
+           "S": "{% $ngwid %}"
+         }
+       },
+       "TableName": "${TableName}",
+       "UpdateExpression": "ADD NumOfRecordings :inc"
+     }
+   },
+   "NotifySNS": {
+     "Type": "Task",
+     "Resource": "arn:aws:states:::sns:publish",
+     "End": true,
+     "Arguments": {
+       "Message": "{% 'The VPC Flow Logs has been recorded for NAT Gateway ' & $ngwid & '\nCloudWatch Logs Group https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/Auto-VPC-FlowLogs-12b036428007\nStream Prefix ' & $ENI %}",
+       "Subject": "NAT Gateway VPC Flow Log Recorded",
+       "TopicArn": "${SNSTopic}"
+     }
+   },
+   "RemoveToken": {
+     "Next": "DeleteVPCFlowLog",
+     "Arguments": {
+       "Key": {
+         "ngwid": {
+           "S": "{% $ngwid %}"
+         }
+       },
+       "TableName": "${TableName}",
+       "UpdateExpression": "REMOVE tokenID"
+     },
+     "Resource": "arn:aws:states:::dynamodb:updateItem",
+     "Type": "Task"
+   },
+   "ShouldWeRecord?": {
+     "Type": "Choice",
+     "Choices": [
+       {
+         "Condition": "{% $NumOfRecordings > 0 and $RecordedSoFar >= $NumOfRecordings %}",
+         "Comment": "Recorded Max Times",
+         "Next": "VPCflAlreadyRecorded"
+       }
+     ],
+     "Default": "Increment Number Of Recordings"
+   },
+   "VPCflAlreadyRecorded": {
+     "End": true,
+     "Assign": {
+       "Message": "Flow Log was already recorded for NatGateway"
+     },
+     "Type": "Pass"
+   },
+   "WaitForAlarmOrTimeout": {
+     "Type": "Task",
+     "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+     "Next": "RemoveToken",
+     "TimeoutSeconds": "{% $number(${RecordingTime})%}",
+     "Catch": [
+       {
+         "ErrorEquals": [
+           "States.Timeout"
+         ],
+         "Next": "RemoveToken",
+         "Comment": "Timeout"
+       }
+     ],
+     "Arguments": {
+       "FunctionName": "${WaitForTokenLambda}",
+       "Payload": {
+         "TableName": "${TableName}",
+         "ngwid": "{% $ngwid %}",
+         "token": "{% $states.context.Task.Token %}"
+       }
+     }
+   },
+   "Were Flow Logs recorded yet?": {
+     "Choices": [
+       {
+         "Comment": "If not recorded yet - go to add the Item to dynamoDB",
+         "Condition": "{% $NoRecordingYet %}",
+         "Next": "AddNGW-ID"
+       }
+     ],
+     "Default": "ShouldWeRecord?",
+     "Type": "Choice"
+   }
+ }
+}

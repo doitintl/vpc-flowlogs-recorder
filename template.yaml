@@ -287,46 +287,6 @@ Resources:
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
 
-  # This Lambda function deletes (and thus stops) the VPC Flow Log recording process
-  DeleteVPCFlowLogFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub
-        - DeleteVPCFlowLog-${Suffix}
-        - Suffix: !Select
-            - 4
-            - !Split
-              - '-'
-              - !Select
-                - 2
-                - !Split
-                  - /
-                  - !Ref AWS::StackId
-      Handler: delete_vpc_flow_log.lambda_handler
-      Runtime: python3.12
-      Architectures:
-        - arm64
-      CodeUri: ./src-delete
-      Policies:
-        - AWSLambdaExecute
-        - CloudWatchLogsFullAccess
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - ec2:CreateFlowLogs
-                - ec2:DescribeFlowLogs
-                - ec2:DeleteFlowLogs
-              Resource: '*'
-
-  # This is the CloudWatch Log Group used to store logs from the "DeleteVPCFlowLogFunction" Lambda function
-  DeleteVPCFlowLogFunctionCloudWatchLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/${DeleteVPCFlowLogFunction}
-      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
-      LogGroupClass: INFREQUENT_ACCESS
-
   # This is the Step Function definition.
   # It is responsible for implementing the main logic of this solution
   StepFunction:
@@ -343,149 +303,14 @@ Resources:
                 - !Split
                   - /
                   - !Ref AWS::StackId
-      Definition:
-        Comment: "State Machine to record Nat Gateway spikes in a VPC Flow Log"
-        StartAt: "Add Number of Recordings To State Machine"
-        States:
-          "Add Number of Recordings To State Machine":
-            Type: "Pass"
-            Next: "Check-NGW-ID"
-            Result: 
-              NumOfRecordings:
-              Fn::Transform:
-                Name: "StringToInt-F39F5A878973"
-                Parameters:
-                  Value: !Ref NumOfRecordings
-            ResultPath: $.NumOfRecordings
-          Check-NGW-ID:
-            InputPath: "$.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId"
-            Next: "Were Flow Logs recorded yet?"
-            Parameters:
-              Key:
-                ngwid.$: "$"
-              TableName: !Ref NGWFlowlogsTable
-            Resource: "arn:aws:states:::dynamodb:getItem"
-            ResultPath: $.taskresult
-            Type: "Task"
-          "Were Flow Logs recorded yet?":
-            Type: "Choice"
-            Choices:
-              - IsPresent: false
-                Variable: "$.taskresult.Item.ngwid.S"
-                Next: "AddNGW-ID"
-                Comment: If not recorded yet - go to add the Item to dynamoDB
-            Default: "Convert Numbers"
-          "Convert Numbers":
-            Type: "Pass"
-            Next: "ShouldWeRecord?"
-            Parameters:
-              val.$: "States.StringToJson($.taskresult.Item.NumOfRecordings.N)"
-            ResultPath: $.RecordedSoFar
-          ShouldWeRecord?:
-            Type: Choice
-            Choices:
-              - And:
-                  - Variable: "$.taskresult.Item.ngwid.S"
-                    IsPresent: true
-                  - Variable: "$.NumOfRecordings"
-                    NumericGreaterThan: 0
-                  - Variable: "$.RecordedSoFar.val"
-                    NumericGreaterThanEqualsPath: "$.NumOfRecordings"
-                Comment: "Recorded Max Times"
-                Next: VPCflAlreadyRecorded
-            Default: "Increment Number Of Recordings"
-          "Increment Number Of Recordings":
-            Type: Task
-            Resource: arn:aws:states:::dynamodb:updateItem
-            Parameters:
-              TableName: !Ref NGWFlowlogsTable
-              Key:
-                ngwid:
-                  S.$: $.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId
-              UpdateExpression: "ADD NumOfRecordings :inc"
-              ExpressionAttributeValues:
-                ":inc":
-                  N: "1"
-            Next: Extract-NGW-ID
-            ResultPath: null            
-          AddNGW-ID:
-            Next: Extract-NGW-ID
-            Parameters:
-              Item:
-                ngwid:
-                  S.$: "$.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId"
-                NumOfRecordings:
-                  N: "1"
-              TableName: !Ref NGWFlowlogsTable
-            Resource: "arn:aws:states:::dynamodb:putItem"
-            ResultPath: null
-            Type: "Task"
-          Extract-NGW-ID:
-            Next: "ActivateVPCFlowLog"
-            Type: "Pass"
-            Parameters:
-              ngwid.$: "$.detail.configuration.metrics[1].metricStat.metric.dimensions.NatGatewayId"
-          ActivateVPCFlowLog:
-            Next: "WaitForAlarmOrTimeout"
-            Parameters:
-              ngwid.$: "$.ngwid"
-            Resource: !GetAtt ActivateVPCFlowLogFunction.Arn
-            ResultPath: "$.taskresult"
-            Type: "Task"
-          WaitForAlarmOrTimeout:
-            Type: Task
-            Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
-            TimeoutSeconds:
-              Fn::Transform:
-                Name: "StringToInt-F39F5A878973"
-                Parameters:
-                  Value: !Ref RecordingTime
-            Parameters:
-              FunctionName: !GetAtt StoreWaitTokenFunction.Arn
-              Payload:
-                ngwid.$: $.ngwid
-                token.$: $$.Task.Token
-                TableName: !Ref NGWFlowlogsTable
-            Catch:
-              - ErrorEquals:
-                  - States.Timeout
-                ResultPath: null
-                Next: RemoveToken
-                Comment: "Timeout"
-            ResultPath: null
-            Next: RemoveToken     
-          RemoveToken:
-            Type: "Task"                
-            Parameters:
-              Key:
-                ngwid:
-                  S.$: "$.ngwid"
-              UpdateExpression: REMOVE tokenID
-              TableName: !Ref NGWFlowlogsTable
-            Resource: "arn:aws:states:::dynamodb:updateItem"
-            ResultPath: null
-            Next: "DeleteVPCFlowLog"
-          DeleteVPCFlowLog:
-            Next: "NotifySNS"
-            Parameters:
-              FlowLogIds.$: "$.taskresult.body.FlowLogIds"
-            Resource: !GetAtt DeleteVPCFlowLogFunction.Arn
-            Type: "Task"
-            ResultPath: null
-          NotifySNS:
-            End: true
-            Parameters:
-              Message.$: !Sub States.Format('The VPC Flow Logs has been recorded for NAT Gateway {}\nCloudWatch Logs Group {}\nStream Prefix {}\n', $.ngwid, 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/${VPCFlowLogsCloudWatchLogGroup}', $.taskresult.body.ENI)                         
-              Subject: "NAT Gateway VPC Flow Log Recorded"
-              TopicArn: !Ref NatGatewayFlowLogsTopic
-            Resource: "arn:aws:states:::sns:publish"
-            Type: "Task"
-          VPCflAlreadyRecorded:
-            End: true
-            Parameters:
-              Message: "Flow Log was already recorded for NatGateway"
-              ngwid.$: "$.taskresult.Item.ngwid.S"
-            Type: "Pass"
+      DefinitionSubstitutions:
+        NumOfRecordings: !Ref NumOfRecordings
+        TableName: !Ref NGWFlowlogsTable
+        ActivateVPCFlowLogLambda: !Ref ActivateVPCFlowLogFunction
+        WaitForTokenLambda: !Ref StoreWaitTokenFunction
+        SNSTopic: !Ref NatGatewayFlowLogsTopic
+        RecordingTime: !Ref RecordingTime
+      DefinitionUri: ./step_function.asl.json
       Role: !GetAtt StepFunctionExecutionRole.Arn
 
   # The IAM Role assigned to the Step Function giving it permissions to access the resources it needs
@@ -510,6 +335,7 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:UpdateItem
                   - lambda:InvokeFunction
+                  - ec2:DeleteFlowLogs
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -693,10 +519,6 @@ Outputs:
   AlarmEndedFunction:
     Description: Cloudwatch Nat Gateway Alarm Ended Function Console Link
     Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${AlarmEndedFunction}    
-
-  DeleteVPCFlowLogFunction:
-    Description: Delete VPC Flow Log Lambda Function Console Link
-    Value: !Sub https://console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${DeleteVPCFlowLogFunction}
 
   StepFunction:
     Description: ENI Flowlogs Step Function Console Link

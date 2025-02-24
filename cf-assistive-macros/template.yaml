@@ -39,31 +39,3 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${GenerateNgwAlarmsFunction}
       RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
       LogGroupClass: INFREQUENT_ACCESS
-
-  StringToIntFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: StringToInt-F39F5A878973
-      Handler: StringToInt.lambda_handler
-      Runtime: python3.12
-      Architectures:
-        - arm64
-      CodeUri: ./StringToInt-Macro
-      Timeout: 10
-      Policies:
-        - AWSLambdaExecute
-        - CloudWatchLogsFullAccess
-
-  StringToIntMacro:
-    Type: AWS::CloudFormation::Macro
-    Properties:
-      Name: StringToInt-F39F5A878973
-      FunctionName: !Ref StringToIntFunction
-      Description: "Macro to convert a String to an Integer"
-
-  StringToIntFunctionCloudWatchLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub /aws/lambda/${StringToIntFunction}
-      RetentionInDays: !Ref LambdaLogGroupRetentionTimeDays
-      LogGroupClass: INFREQUENT_ACCESS
