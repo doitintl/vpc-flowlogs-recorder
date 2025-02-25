@@ -3,6 +3,12 @@
 This is a serverless solution to create VPC FlowLogs to record spiky traffic in NAT Gateways.  
 It has an accompanying Medium Blog Post [here](https://medium.com/doit-international/serverless-vpc-flow-logs-recording-nat-gateway-traffic-spikes-a37658821302)
 
+<h2>February 2025 Update</h2>
+
+There is a new branch called "JSONata" in which the Step Function was converted to JSONata and Variables.  
+The body (ASL) of the step function was also moved from the SAM YAML template to its own JSON file, which is referenced from the SAM YAML Template.  
+It is a simpler, smaller, clearer code than before.  
+
 <h2>The Problem</h2>
 
 It can be challenging to deal with unexpected traffic spikes in AWS's Network Address Translation (NAT) Gateways Service. While VPC Flow Logs provide valuable insights into network traffic, constantly recording them can lead to unnecessary storage costs and a deluge of data that might not be relevant during normal operations.
