@@ -6,7 +6,7 @@ It has an accompanying Medium Blog Post [here](https://medium.com/doit-internati
 <h2>February 2025 Update</h2>
 
 The Step Function was converted to JSONata and Variables.  
-It was also moved to its own json file that is referenced from the SAM Template.  
+The body (ASL) of the step function was moved from the SAM YAML template to its own JSON file, which is referenced from the SAM YAML Template.  
 It is a simpler, smaller, clearer code than before.  
 
 <h2>The Problem</h2>
